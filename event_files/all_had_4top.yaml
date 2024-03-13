@@ -11,7 +11,7 @@ INPUTS:
       cos_phi: normalize
       e: log_normalize
       eta: normalize
-      mass: log_normalize
+      # mass: log_normalize
       pt: log_normalize
       sin_phi: normalize
 
