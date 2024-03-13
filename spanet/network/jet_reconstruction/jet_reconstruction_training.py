@@ -90,6 +90,8 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # We are only going to look at a single prediction points on the distribution for more stable loss calculation
         # We multiply the softmax values by the size of the permutation group to make every target the same
         # regardless of the number of sub-jets in each target particle
+        for decoder in self.branch_decoders:
+            print('num_targets:',decoder.num_targets)
         assignments = [prediction + torch.log(torch.scalar_tensor(decoder.num_targets))
                        for prediction, decoder in zip(assignments, self.branch_decoders)]
 
@@ -204,17 +206,27 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # ===================================================================================================
         # Network Forward Pass
         # ---------------------------------------------------------------------------------------------------
+        print('batch.sources:', type(batch.sources))
+        print(batch.sources[0])
         outputs = self.forward(batch.sources)
 
         # ===================================================================================================
         # Initial log-likelihood loss for classification task
         # ---------------------------------------------------------------------------------------------------
+        print('assignments:', type(outputs.assignments))
+        print(outputs.assignments[0].shape)
+        print('detections:', type(outputs.detections))
+        print(outputs.detections[0].shape)
+        print('assignment_targets:', type(batch.assignment_targets))
+        print(batch.assignment_targets)
         symmetric_losses, best_indices = self.symmetric_losses(
             outputs.assignments,
             outputs.detections,
             batch.assignment_targets
         )
-
+        print('symmetric_losses:',symmetric_losses.shape)
+        print('best_indices:',best_indices.shape)
+        print(best_indices)
         # Construct the newly permuted masks based on the minimal permutation found during NLL loss.
         permutations = self.event_permutation_tensor[best_indices].T
         masks = torch.stack([target.mask for target in batch.assignment_targets])
@@ -239,6 +251,9 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # Take the weighted average of the symmetric loss terms.
         masks = masks.unsqueeze(1)
         symmetric_losses = (weights * symmetric_losses).sum(-1) / torch.clamp(masks.sum(-1), 1, None)
+        print('symmetric_losses',symmetric_losses.shape)
+        print(symmetric_losses)
+        print('assignments',self.training_dataset.assignments)
         assignment_loss, detection_loss = torch.unbind(symmetric_losses, 1)
 
         # ===================================================================================================
@@ -286,5 +301,5 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         total_loss = torch.cat([loss.view(-1) for loss in total_loss])
 
         self.log("loss/total_loss", total_loss.sum(), sync_dist=True)
-
+        # exit(0)
         return total_loss.mean()
