@@ -10,8 +10,60 @@ from numpy.ctypeslib import ndpointer
 from collections import defaultdict
 from itertools import groupby
 import glob
+import argparse
 
+from h5Test import compactKeyDict,printCompactKeyDict
+class hdf5Structure:
+    def __init__(self) -> None:
+        self.structure = {}
+        self.short = False
+    def evaluateStructure(self, file):
+        self.file = file
+        compactKeyDict(self.file, self.structure)
 
+    def setDisplayOption(self, short=False):
+        self.short = short
+
+    def displayCompactKeyDict(self, res= [''], key_dict=None, spaceVal=0, short=False):
+        if key_dict is None:
+            key_dict = self.structure
+        for key in key_dict.keys():
+        
+            # print(spaceVal*'\t',key,sep='')
+            res[0] += (spaceVal*'\t')+key+'\n'
+            if type(key_dict[key]) == dict:
+                # printCompactKeyDict(key_dict[key], spaceVal+1)
+                self.displayCompactKeyDict(res, key_dict[key], spaceVal+1, short=short)
+            else:
+                if not short :
+                    result = ''
+                    for k in key_dict[key][1].keys():
+                        result += f'{k} : {key_dict[key][1][k]}'
+                    res[0] += (spaceVal+1)*'\t'+' '+result + '\n'
+        return res
+    def __repr__(self) -> str:
+        result = ''
+        result += f'Structure of the HDF5 {self.file} file\n'
+        result += '--------------------------------------\n'
+        result += self.displayCompactKeyDict(short=self.short)[0]
+
+        result += '--------------------------------------\n'
+
+        return result
+    def getBranchesList(self, currentBranch=[''], key_dict=None, spaceVal=0, res=[]):
+        if key_dict is None:
+            key_dict = self.structure
+
+        for key in key_dict:
+            currentBranch[0] += key+'/'
+            if type(key_dict[key]) == dict:
+                self.getBranchesList(currentBranch, key_dict[key], spaceVal+1, res)
+                currentBranch[0] = '/'.join(currentBranch[0].split('/')[:-2] ) + '/'
+            elif type(key_dict[key]) == list or key_dict[key].empty() :
+                currentBranch[0] = currentBranch[0][:-1]
+                res.append(currentBranch[0])
+                currentBranch[0] = '/'.join(currentBranch[0].split('/')[:-1] ) + '/'
+        return res
 m1 = '/INPUTS/Jets/MASK'
 m2 =  '/INPUTS/Jets/btag'
 m3 =  '/INPUTS/Jets/cos_phi'
@@ -69,12 +121,31 @@ def create_for_append(h5file, name, data):
           name, data=data, maxshape=(None,) + data.shape[1:])
 
 if __name__ == '__main__':
-    input_path = sys.argv[1]
-    mode = sys.argv[2]
-    filenames_odd = glob.glob(os.path.join(input_path,f'*{mode}.h5'))
-    outputh5Filename = f'joined_{mode}.h5'
-    file = h5.File(filenames_odd[0], 'r')
 
+    parser=argparse.ArgumentParser()
+    # four_top_SPANET_input_even.h5
+    parser.add_argument('-i', '--inloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/', type=str, help='Input file location')
+    parser.add_argument('-o', '--outloc' , default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/output.h5', type=str, help='Output location')
+    parser.add_argument('-t', '--test', action='store_true', help='Test the code')
+    parser.add_argument('-m', '--mode', default='even', type=str, help='Mode e.g. even or odd')
+
+    args = parser.parse_args()
+
+    input_path = args.inloc
+    mode = args.mode
+    filenames_odd = glob.glob(os.path.join(input_path,f'*{mode}.h5'))
+    print(input_path)
+    print(f'*{mode}.h5')
+    outputh5Filename = args.outloc
+    file = h5.File(filenames_odd[0], 'r')
+    print(filenames_odd)
+    struct = hdf5Structure()
+    struct.evaluateStructure(file)
+    print(struct)
+    branchesList = struct.getBranchesList()
+    for branch in branchesList:
+        print(file[branch])
+    exit(1)
     with h5.File(outputh5Filename, "w") as outputDataFile:
         create_for_append(outputDataFile, m1, file[m1])
         create_for_append(outputDataFile, m2, file[m2])
