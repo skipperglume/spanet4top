@@ -728,20 +728,37 @@ def displayFoundFiles(fPaths : list):
               if name[0] == '.':
                      name = name[1:]
               print(name)
+
 if __name__ == "__main__":
        
        file_paths = []
 
        parser=argparse.ArgumentParser()
-       parser.add_argument('--inloc', metavar='-i', default='/home/timoshyd/RAC_4tops_analysis/ntuples/v06_BDT_SPANET_Input/nom', type=str, help='Input file location')
-       parser.add_argument('--topo', metavar='-t', default='ttbar', type=str, help='Topology of underlying event')
-       parser.add_argument('--outloc', metavar='-o', default='./four_top_SPANET_input/four_top_SPANET_input', type=str, help='Out location')
-       parser.add_argument('--maxjets', metavar='-m', default=18, type=int, help='Max number of jets')
-       parser.add_argument('--treename', metavar='-tr', default='nominal', type=str, help='Name of nominal tree')
-       parser.add_argument('--btag', metavar='-b', type=str, default='DL1r', help='Which btag alg to use')
+       parser.add_argument('-i', '--inloc', default='/home/timoshyd/RAC_4tops_analysis/ntuples/v06_BDT_SPANET_Input/nom', type=str, help='Input file location')
+       parser.add_argument('-t', '--topo', default='ttbar', type=str, help='Topology of underlying event')
+       parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/four_top_SPANET_input', type=str, help='Output location')
+       parser.add_argument('-m', '--maxjets', default=18, type=int, help='Max number of jets')
+       parser.add_argument('-tr', '--treename', default='nominal', type=str, help='Name of nominal tree')
+       parser.add_argument('-b', '--btag', type=str, default='DL1r', help='Which btag alg to use')
        parser.add_argument('--oddeven', action='store_false' , help='Split into odd and even events')
        parser.add_argument('--test', action='store_true', help='Test the code')
+       parser.add_argument('-p','--prefix',default='year18_', help='Prefix to separate files')
+       parser.add_argument('-s','--suffix',default='_year18', help='Prefix to separate files')
        args = parser.parse_args()
+
+       if args.prefix != '':
+              listNameParts = args.outloc.split('/')
+              listNameParts[-1] = args.prefix + listNameParts[-1]
+              print('Old output location:', args.outloc)
+              args.outloc = '/'.join(listNameParts)
+              print('New output location:', args.outloc)
+       if args.suffix != '':
+              listNameParts = args.outloc.split('/')
+              listNameParts[-1] = listNameParts[-1] + args.suffix
+              print('Old output location:', args.outloc)
+              args.outloc = '/'.join(listNameParts)
+              print('New output location:', args.outloc)
+       # exit(1)
        #print(args.inloc)
        if os.path.isfile(args.inloc):
               file_paths.append(args.inloc)
@@ -771,8 +788,8 @@ if __name__ == "__main__":
        # For now we choose only two files
        selectionSubstring = [ 
                                    # 'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14859_p5855.4thad26_240130_v06.3_output_root.nominal.root',
-                                   'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14860_p5855.4thad26_240130_v06.3_output_root.nominal.root',
-                                   # 'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14861_p5855.4thad26_240130_v06.3_output_root.nominal.root',
+                                   # 'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14860_p5855.4thad26_240130_v06.3_output_root.nominal.root',
+                                   'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14861_p5855.4thad26_240130_v06.3_output_root.nominal.root',
                                    ]
 
        if not len(selectionSubstring) ==0 :

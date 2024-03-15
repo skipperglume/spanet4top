@@ -12,14 +12,17 @@ from itertools import groupby
 import glob
 import argparse
 
-from h5Test import compactKeyDict,printCompactKeyDict
+from h5Test import compactKeyDict, printCompactKeyDict, recursiveHDF5List
 class hdf5Structure:
-    def __init__(self) -> None:
+    def __init__(self, name='struct') -> None:
         self.structure = {}
         self.short = False
+        self.name = name
     def evaluateStructure(self, file):
         self.file = file
-        compactKeyDict(self.file, self.structure)
+        # print('before:',self.structure)
+        compactKeyDict(self.file, self.structure, 0)
+        # print('after:',self.structure)
 
     def setDisplayOption(self, short=False):
         self.short = short
@@ -45,7 +48,7 @@ class hdf5Structure:
         result = ''
         result += f'Structure of the HDF5 {self.file} file\n'
         result += '--------------------------------------\n'
-        result += self.displayCompactKeyDict(short=self.short)[0]
+        result += self.displayCompactKeyDict(res= [''],key_dict=self.structure,spaceVal=0,short=self.short)[0]
 
         result += '--------------------------------------\n'
 
@@ -64,36 +67,6 @@ class hdf5Structure:
                 res.append(currentBranch[0])
                 currentBranch[0] = '/'.join(currentBranch[0].split('/')[:-1] ) + '/'
         return res
-m1 = '/INPUTS/Jets/MASK'
-m2 =  '/INPUTS/Jets/btag'
-m3 =  '/INPUTS/Jets/cos_phi'
-m4 =  '/INPUTS/Jets/e'
-m5 =  '/INPUTS/Jets/eta'
-m6 =   '/INPUTS/Jets/mass'
-m7 =   '/INPUTS/Jets/pt'
-m8 =   '/INPUTS/Jets/sin_phi'
-m9 =  '/INPUTS/Leptons/MASK'
-m10 =   '/INPUTS/Leptons/cos_phi'
-m11 =   '/INPUTS/Leptons/e'
-m12 =   '/INPUTS/Leptons/eta'
-m13 =   '/INPUTS/Leptons/etag'
-m14 =   '/INPUTS/Leptons/mass'
-m15 =   '/INPUTS/Leptons/mutag'
-m16 =   '/INPUTS/Leptons/pt'
-m17 =   '/INPUTS/Leptons/sin_phi'
-m18 =   '/INPUTS/Met/cos_phi'
-m19 =   '/INPUTS/Met/met'
-m20 =   '/INPUTS/Met/sin_phi'
-m21 =   '/REGRESSIONS/EVENT/neutrino_e'
-m22 =   '/REGRESSIONS/EVENT/neutrino_eta'
-m23 =   '/REGRESSIONS/EVENT/neutrino_phi'
-m24 =   '/REGRESSIONS/EVENT/neutrino_pt'
-m25 =   '/TARGETS/extrajet_parton/extrajet'
-m26 =   '/TARGETS/th/b'
-m27 =   '/TARGETS/th/q1'
-m28 =   '/TARGETS/th/q2'
-m29 =   '/TARGETS/tl/b'
-m30 =   '/TARGETS/tl/l'
 
 def traverse_datasets(hdf_file):
     def h5py_dataset_iterator(g, prefix=''):
@@ -117,15 +90,26 @@ def append_to_dataset(dataset, data):
 
 def create_for_append(h5file, name, data):
     data = np.asanyarray(data)
-    return h5file.create_dataset(
-          name, data=data, maxshape=(None,) + data.shape[1:])
+    # Resizing dataset 
+    # print(h5file)
+    # recursiveHDF5List(h5file)
+    if name in h5file:
+        # Resizing dataset 
+        h5file[name].resize(h5file[name].shape[0] + data.shape[0], axis=0)
+        h5file[name][-data.shape[0]:] = data
+    else:
+        # Create the dataset if it doesn't exist
+        h5file.create_dataset(name, data=data, maxshape=(None,) + data.shape[1:])
+    # h5file[name].resize(h5file[name].shape[0] + data.shape[0], axis=0)
+    # h5file[name][-data.shape[0]:] = data
+    # return h5file.create_dataset(name, data=data, maxshape=(None,) + data.shape[1:])
 
 if __name__ == '__main__':
 
     parser=argparse.ArgumentParser()
     # four_top_SPANET_input_even.h5
     parser.add_argument('-i', '--inloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/', type=str, help='Input file location')
-    parser.add_argument('-o', '--outloc' , default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/output.h5', type=str, help='Output location')
+    parser.add_argument('-o', '--outloc' , default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/output1.h5', type=str, help='Output location')
     parser.add_argument('-t', '--test', action='store_true', help='Test the code')
     parser.add_argument('-m', '--mode', default='even', type=str, help='Mode e.g. even or odd')
 
@@ -134,99 +118,80 @@ if __name__ == '__main__':
     input_path = args.inloc
     mode = args.mode
     filenames_odd = glob.glob(os.path.join(input_path,f'*{mode}.h5'))
-    print(input_path)
-    print(f'*{mode}.h5')
-    outputh5Filename = args.outloc
-    file = h5.File(filenames_odd[0], 'r')
     print(filenames_odd)
-    struct = hdf5Structure()
+    
+    file = h5.File(filenames_odd[0], 'r')
+    
+    struct = hdf5Structure('default')
     struct.evaluateStructure(file)
-    print(struct)
+    recursiveHDF5List(file)
     branchesList = struct.getBranchesList()
+
+    problematicBranches = []
     for branch in branchesList:
-        print(file[branch])
-    exit(1)
-    with h5.File(outputh5Filename, "w") as outputDataFile:
-        create_for_append(outputDataFile, m1, file[m1])
-        create_for_append(outputDataFile, m2, file[m2])
-        create_for_append(outputDataFile, m3, file[m3])
-        create_for_append(outputDataFile, m4, file[m4])
-        create_for_append(outputDataFile, m5, file[m5])
-        create_for_append(outputDataFile, m6, file[m6])
-        create_for_append(outputDataFile, m7, file[m7])
-        create_for_append(outputDataFile, m8, file[m8])
-        create_for_append(outputDataFile, m9, file[m9])
-        create_for_append(outputDataFile, m10, file[m10])
-        create_for_append(outputDataFile, m11, file[m11])
-        create_for_append(outputDataFile, m12, file[m12])
-        create_for_append(outputDataFile, m13, file[m13])
-        create_for_append(outputDataFile, m14, file[m14])
-        create_for_append(outputDataFile, m15, file[m15])
-        create_for_append(outputDataFile, m16, file[m16])
-        create_for_append(outputDataFile, m17, file[m17])
-        create_for_append(outputDataFile, m18, file[m18])
-        create_for_append(outputDataFile, m19, file[m19])
-        create_for_append(outputDataFile, m20, file[m20])
-        create_for_append(outputDataFile, m21, file[m21])
-        create_for_append(outputDataFile, m22, file[m22]) 
-        create_for_append(outputDataFile, m23, file[m23]) 
-        create_for_append(outputDataFile, m24, file[m24]) 
-        create_for_append(outputDataFile, m25, file[m25]) 
-        create_for_append(outputDataFile, m26, file[m26]) 
-        create_for_append(outputDataFile, m27, file[m27]) 
-        create_for_append(outputDataFile, m28, file[m28]) 
-        create_for_append(outputDataFile, m29, file[m29]) 
-        create_for_append(outputDataFile, m30, file[m30]) 
+        if branch not in file:
+            print(f'ERROR: Branch {branch} not found in the file')
+            problematicBranches.append(branch)
+        else:  
+            if type(file[branch]) == h5._hl.dataset.Dataset:
+                print(f'Branch {branch} found in the file is [Dataset]',file[branch].shape, file[branch].dtype)
+            else:
+                print(f'ERROR: Branch {branch} found in the file is ', type(file[branch]))
+                problematicBranches.append(branch)
+    
+    if len(problematicBranches) > 0:
+        print('ERROR: The following branches are problematic')
+        for branch in problematicBranches:
+            branchesList.remove(branch)
+            print(f'Branch {branch} removed from the list of branches')
+    print('Branches in the file:', branchesList)
+    
+    
+    # Cleaning old output file
+    if os.path.exists(args.outloc):
+        os.system(f'rm -f {args.outloc}')
+    with h5.File(args.outloc, "w") as outputDataFile:
+        for branch in branchesList:
+            create_for_append(outputDataFile, branch, file[branch])
         
     file.close()                
     for filename in filenames_odd[1:]:
-
+        print(f'Appending file: {filename}')
         h5df5paths = set(traverse_datasets(filename))
 
         file = h5.File(filename, 'r')
-
         
-        #outputhdf5paths = set()
-        #if os.path.exists(outputh5Filename):
-        #    outputhdf5paths = set(traverse_datasets(outputh5Filename))
-        
+        outputhdf5paths = set()
+        if os.path.exists(args.outloc):
+           outputhdf5paths = set(traverse_datasets(args.outloc))
 
-        with h5.File(outputh5Filename, "a") as outputDataFile:
-            #append_to_dataset(outputDataFile[hdf5path], file[hdf5path][()])
-            append_to_dataset(outputDataFile[m1], file[m1])
-            append_to_dataset(outputDataFile[m2], file[m2])
-            append_to_dataset(outputDataFile[m3], file[m3])
-            append_to_dataset(outputDataFile[m4], file[m4])
-            append_to_dataset(outputDataFile[m5], file[m5])
-            append_to_dataset(outputDataFile[m6], file[m6])
-            append_to_dataset(outputDataFile[m7], file[m7])
-            append_to_dataset(outputDataFile[m8], file[m8])
-            append_to_dataset(outputDataFile[m9], file[m9])
-            append_to_dataset(outputDataFile[m10], file[m10])
-            append_to_dataset(outputDataFile[m11], file[m11])
-            append_to_dataset(outputDataFile[m12], file[m12])
-            append_to_dataset(outputDataFile[m13], file[m13])
-            append_to_dataset(outputDataFile[m14], file[m14])
-            append_to_dataset(outputDataFile[m15], file[m15])
-            append_to_dataset(outputDataFile[m16], file[m16])
-            append_to_dataset(outputDataFile[m17], file[m17])
-            append_to_dataset(outputDataFile[m18], file[m18])
-            append_to_dataset(outputDataFile[m19], file[m19])
-            append_to_dataset(outputDataFile[m20], file[m20])
-            append_to_dataset(outputDataFile[m21], file[m21])
-            append_to_dataset(outputDataFile[m22], file[m22]) 
-            append_to_dataset(outputDataFile[m23], file[m23]) 
-            append_to_dataset(outputDataFile[m24], file[m24]) 
-            append_to_dataset(outputDataFile[m25], file[m25]) 
-            append_to_dataset(outputDataFile[m26], file[m26]) 
-            append_to_dataset(outputDataFile[m27], file[m27]) 
-            append_to_dataset(outputDataFile[m28], file[m28]) 
-            append_to_dataset(outputDataFile[m29], file[m29]) 
-            append_to_dataset(outputDataFile[m30], file[m30]) 
+        print(outputhdf5paths)
+        # print(branchesList)
+        with h5.File(args.outloc, "a") as outputDataFile:
+            print(args.outloc)
+            for branch in branchesList:
+                print(branch)
+                create_for_append(outputDataFile, branch, file[branch])
             
-            outputhdf5paths = set(traverse_datasets(outputh5Filename))
-        
+            outputhdf5paths = set(traverse_datasets(args.outloc))
         
         
         file.close()
+    
+    for filename in filenames_odd:
+        print(filename)
+        print('+++++++++++++++++')
+        iterStruct = hdf5Structure('new struct')
+        # print(iterStruct.name)
+        iterStruct.evaluateStructure(h5.File(filename, 'r'))
+        # recursiveHDF5List(h5.File(filename, 'r'))
+        print(iterStruct)
+        branchesList = iterStruct.getBranchesList()
+        # print(branchesList)
+        # print('+++++++++++++++++')
   
+    outStruct = hdf5Structure('outputstruct')
+    outStruct.evaluateStructure(h5.File(args.outloc, 'r'))
+    print(outStruct)
+    branchesList = outStruct.getBranchesList()
+    print(branchesList)
