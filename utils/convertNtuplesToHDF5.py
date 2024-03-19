@@ -183,7 +183,7 @@ def source(root_files : list, args: argparse.Namespace):
        # Features lists that will be appended to and will have dimensions (EVENTS, MAX_JETS)
        jet_mask_list, jet_mass_list, jet_pt_list, jet_eta_list, jet_phi_list, jet_sin_phi_list, jet_cos_phi_list, jet_btag_list, jet_e_list = [], [], [], [], [], [], [], [], []
        jet_btag60_list, jet_btag70_list, jet_btag77_list, jet_btag85_list = [], [], [], []
-
+       jet_ptx_list, jet_pty_list =[], []
        leptag_list = []    # If topo is ttZ > 6jet2lep, create leptag feature list
 
        #Leptons
@@ -191,9 +191,9 @@ def source(root_files : list, args: argparse.Namespace):
        lepton_etag_list, lepton_mutag_list = [], []
 
        #MET
-       #Only one per event 
+       #Only one values per event 
        met_met_list, met_phi_list, met_sin_phi_list, met_cos_phi_list = [], [], [], []
-
+       met_x_list, met_y_list = [], []
 
        if 'allhad_ttH' in args.topo: qgtag_list = []
 
@@ -230,15 +230,18 @@ def source(root_files : list, args: argparse.Namespace):
                      
               events = nominal.GetEntries()
 
+              all_had_count = 0
+              non_all_had_count = 0
               for i in range(events):
                      # Early stopping for testing
-                     # if i > 100000: break
+                     if i > 10000 and args.test: break
                      #print(i)
                      if i % 50000 == 0: 
                             print(str(i)+"/"+str(events))
                             print('Currently collected events: ',len(eventNumber_list))
                      nominal.GetEntry(i)
-
+                     
+                     
                      #one could apply cuts here if desired, but usually inclusive training is best!
                      if nominal.n_jet < 9: continue
                      #if nominal.nHFJets < 4: continue
@@ -283,11 +286,18 @@ def source(root_files : list, args: argparse.Namespace):
                             # print("T 3 : ", t3q1,t3q2, t3b)
                             # print("T 4 : ", t4q1,t4q2, t4b)
                             continue
-
+                     isLepDecay = [ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)]
+                     if sum(isLepDecay) > 0:
+                            non_all_had_count += 1
+                     else:
+                            all_had_count += 1
 
                      # Feature lists for: pt, eat, phi, ls - that hold this info for ONLY CURRENT EVENT
                      jet_pt_ls,jet_eta_ls,jet_phi_ls,jet_e_ls = list(nominal.jet_pt),list(nominal.jet_eta),list(nominal.jet_phi),list(nominal.jet_e)
                      jet_sin_phi_ls,jet_cos_phi_ls = list(map(math.sin,nominal.jet_phi)),list(map(math.cos,nominal.jet_phi))
+                     jet_ptx_ls = [  nominal.jet_pt[i] * math.cos(nominal.jet_phi[i]) for i in range(len(nominal.jet_pt)) ]
+                     jet_pty_ls = [  nominal.jet_pt[i] * math.sin(nominal.jet_phi[i]) for i in range(len(nominal.jet_pt)) ]
+                     
                      lep_ls = []
 
                      # Adding btag values according to WP
@@ -366,11 +376,14 @@ def source(root_files : list, args: argparse.Namespace):
                      if len(jet_phi_ls)> MAX_JETS: jet_phi_ls = jet_phi_ls[:MAX_JETS]
                      if len(jet_sin_phi_ls)> MAX_JETS: jet_sin_phi_ls = jet_sin_phi_ls[:MAX_JETS]
                      if len(jet_cos_phi_ls)> MAX_JETS: jet_cos_phi_ls = jet_cos_phi_ls[:MAX_JETS]
+                     if len(jet_ptx_ls)> MAX_JETS: jet_ptx_ls = jet_ptx_ls[:MAX_JETS]
+                     if len(jet_pty_ls)> MAX_JETS: jet_pty_ls = jet_pty_ls[:MAX_JETS]
+
                      if len(jet_e_ls)> MAX_JETS: jet_e_ls = jet_e_ls[:MAX_JETS]
                      if len(jet_b_ls)> MAX_JETS: jet_b_ls = jet_b_ls[:MAX_JETS]
 
                      for l in [jet_m_ls, jet_pt_ls, jet_eta_ls, jet_phi_ls, jet_sin_phi_ls, jet_cos_phi_ls, jet_e_ls,
-                               jet_b_ls,
+                               jet_b_ls, jet_ptx_ls, jet_pty_ls
                             #    jet_b60_ls,
                             #    jet_b70_ls, 
                             #    jet_b77_ls,
@@ -388,6 +401,9 @@ def source(root_files : list, args: argparse.Namespace):
                      jet_phi_list.append(jet_phi_ls)
                      jet_sin_phi_list.append(jet_sin_phi_ls)
                      jet_cos_phi_list.append(jet_cos_phi_ls)
+
+                     jet_ptx_list.append(jet_ptx_ls)
+                     jet_pty_list.append(jet_pty_ls)
 
                      jet_btag_list.append(jet_b_ls)
                      jet_e_list.append(jet_e_ls)
@@ -411,6 +427,8 @@ def source(root_files : list, args: argparse.Namespace):
 
                      # Appending event features with onlhy one entry per event (MET)
                      met_met_list.append(met_met_ls); met_phi_list.append(met_phi_ls); met_sin_phi_list.append(met_sin_phi_ls); met_cos_phi_list.append(met_cos_phi_ls);
+                     met_x_list.append( nominal.met_met * math.cos(nominal.met_phi) )
+                     met_y_list.append( nominal.met_met * math.sin(nominal.met_phi) )
 
                      #Get the REGRESSIONS that you want to estimate
 
@@ -438,7 +456,8 @@ def source(root_files : list, args: argparse.Namespace):
 
                      # Close ROOT files
               f.Close()
-
+       print('Number of All hadronic:', all_had_count)
+       print('Number of Non All hadronic:', non_all_had_count)
               
        outfiles = []
        modulusList = []
@@ -473,6 +492,8 @@ def source(root_files : list, args: argparse.Namespace):
                jet_phi_list,
                jet_sin_phi_list,
                jet_cos_phi_list,
+               jet_ptx_list,
+               jet_pty_list,
                jet_btag_list,
                jet_btag60_list,
                jet_btag70_list,
@@ -493,6 +514,8 @@ def source(root_files : list, args: argparse.Namespace):
                met_phi_list,
                met_sin_phi_list,
                met_cos_phi_list,
+               met_x_list,
+               met_y_list,
                neutrino_pt_list,
                neutrino_eta_list,
                neutrino_phi_list,
@@ -526,6 +549,8 @@ def write(outloc, topo, indices,
           jet_phi_list,
           jet_sin_phi_list,
           jet_cos_phi_list,
+          jet_ptx_list,
+          jet_pty_list,
           jet_btag_list,
           jet_btag60_list,
           jet_btag70_list,
@@ -546,6 +571,8 @@ def write(outloc, topo, indices,
           met_phi_list,
           met_sin_phi_list,
           met_cos_phi_list,
+          met_x_list,
+          met_y_list,
           neutrino_pt_list, 
           neutrino_eta_list, 
           neutrino_phi_list, 
@@ -588,6 +615,11 @@ def write(outloc, topo, indices,
        #jet_phi_set = jet_group.create_dataset('phi', data=np.array(jet_phi_list, dtype=np.float32)[indices])
        jet_sin_phi_set = jet_group.create_dataset('sin_phi', data=np.array(jet_sin_phi_list,dtype=np.float32)[indices])
        jet_cos_phi_set = jet_group.create_dataset('cos_phi', data=np.array(jet_cos_phi_list,dtype=np.float32)[indices])
+       print(len(jet_pt_list))
+       print(len(jet_ptx_list))
+       jet_ptx_set = jet_group.create_dataset('pt_x', data=np.array(jet_ptx_list,dtype=np.float32)[indices])
+       jet_pty_set = jet_group.create_dataset('pt_y', data=np.array(jet_pty_list,dtype=np.float32)[indices])
+
        jet_btag_set = jet_group.create_dataset('btag', data=np.array(jet_btag_list, dtype=np.float32)[indices])
        jet_e_set = jet_group.create_dataset('e', data=np.array(jet_e_list, dtype=np.float32)[indices])
 
@@ -612,6 +644,9 @@ def write(outloc, topo, indices,
        #met_phi_set = met_group.create_dataset('phi', data=np.array(met_phi_list, dtype=np.float32)[indices])
        met_sin_phi_set = met_group.create_dataset('sin_phi', data=np.array(met_sin_phi_list, dtype=np.float32)[indices])
        met_cos_phi_set  = met_group.create_dataset('cos_phi', data=np.array(met_cos_phi_list, dtype=np.float32)[indices])
+       
+       met_sin_phi_set = met_group.create_dataset('met_x', data=np.array(met_x_list, dtype=np.float32)[indices])
+       met_cos_phi_set  = met_group.create_dataset('met_y', data=np.array(met_y_list, dtype=np.float32)[indices])
 
 
        #print(pt_list)
@@ -781,9 +816,7 @@ if __name__ == "__main__":
        btag_alg = args.btag
        if not btag_alg:
               btag_alg = 'DL1r'
-       if args.test:
-              # Test on first file:
-              file_paths = [file_paths[0],]
+       
 
        # For now we choose only two files
        selectionSubstring = [ 
