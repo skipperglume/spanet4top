@@ -1,0 +1,71 @@
+# ---------------------------------------------------
+# REQUIRED - INPUTS - List all inputs to SPANet here.
+# ---------------------------------------------------
+INPUTS:
+  # -----------------------------------------------------------------------------
+  # REQUIRED - SEQUENTIAL - inputs which can have an arbitrary number of vectors.
+  # -----------------------------------------------------------------------------
+  SEQUENTIAL:
+    Source:
+      btag: none
+      e: log_normalize
+      eta: normalize
+      pt_x: normalize
+      pt_y: normalize
+
+  # ---------------------------------------------------------------------
+  # REQUIRED - GLOBAL - inputs which will have a single vector per event.
+  # ---------------------------------------------------------------------
+  GLOBAL:
+    Met:
+      met_x: normalize
+      met_y: normalize
+
+
+# ----------------------------------------------------------------------
+# REQUIRED - EVENT - Complete list of resonance particles and daughters.
+# ----------------------------------------------------------------------
+EVENT:
+  t1:
+    - b: Source
+    - q1: Source
+    - q2: Source
+  t2:
+    - b: Source
+    - q1: Source
+    - q2: Source
+  t3:
+    - b: Source
+    - q1: Source
+    - q2: Source
+  t4:
+    - b: Source
+    - q1: Source
+    - q2: Source
+
+# ---------------------------------------------------------
+# REQUIRED KEY - PERMUTATIONS - List of valid permutations.
+# ---------------------------------------------------------
+PERMUTATIONS:
+    EVENT:
+      - [ t1, t2, t3, t4 ]
+    t1:
+      - [ q1, q2 ]
+    t2:
+      - [ q1, q2 ]
+    t3:
+      - [ q1, q2 ]
+    t4:
+      - [ q1, q2 ]
+
+
+# ------------------------------------------------------------------------------
+# REQUIRED - REGRESSIONS - List of desired features to regress from observables.
+# ------------------------------------------------------------------------------
+REGRESSIONS:
+
+
+# -----------------------------------------------------------------------------
+# REQUIRED - REGRESSIONS - List of desired classes to predict from observables.
+# -----------------------------------------------------------------------------
+CLASSIFICATIONS:
