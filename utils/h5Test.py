@@ -10,6 +10,7 @@ parser=argparse.ArgumentParser()
 parser.add_argument('-fn','--filename', default='four_top_SPANET_input/four_top_SPANET_input_even.h5', type=str, help='Input file location')
 parser.add_argument('-n','--nPoints', default=1, type=int, help='Number of Data points to diplay')
 parser.add_argument('-s', '--shift' , default=0, type=int, help='Shift the data points to display')
+parser.add_argument('-v', '--verbose' , action='store_true', help='Verbose output: prints more info')
 args = parser.parse_args()
 
 def recursiveHDF5List(currentContainer, spaceVal=0):
@@ -42,14 +43,17 @@ def compactKeyDict(currentContainer, key_dict, spaceVal=0):
             for sub_key in currentContainer[key].keys():
                 compactKeyDict(currentContainer[key], key_dict[key], spaceVal+1)
     # return key_dict
-def printCompactKeyDict(key_dict, spaceVal=0):
+def printCompactKeyDict(key_dict, spaceVal=0, verbose=False):
     for key in key_dict.keys():
         
         print(spaceVal*'\t',key,sep='')
         if type(key_dict[key]) == dict:
-            printCompactKeyDict(key_dict[key], spaceVal+1)
+            printCompactKeyDict(key_dict[key], spaceVal+1,verbose=verbose)
         else:
-            print((spaceVal+1)*'\t',key_dict[key][1],sep='')
+            if verbose:
+                print((spaceVal+1)*'\t',key_dict[key][0],sep='')
+            else:
+                print((spaceVal+1)*'\t',key_dict[key][1],sep='')
 if __name__ == "__main__":
     args = parser.parse_args()
     # Check if file exists
@@ -72,8 +76,9 @@ if __name__ == "__main__":
     key_dict = {}
     printCompactKeyDict(key_dict)
     compactKeyDict(f, key_dict)
-    printCompactKeyDict(key_dict)
+    printCompactKeyDict(key_dict, verbose=args.verbose)
     print('Finished')
+    print(f'Verbose: {args.verbose}')
     # print(key_dict)
     print('--------------------')
     # List of the keys recursively as well as data types
@@ -95,27 +100,12 @@ if __name__ == "__main__":
                 print(f'\t{sub_key}:')
                 for sub_sub_key in key_dict[key][sub_key].keys():
                     print(f'\t\t{sub_sub_key}:',f[key][sub_key][sub_sub_key][index:index+1])
-        # print(f[dic])
-        # if f['TARGETS']['t1']['b'][index:index+1][0] >= 0:
-        #     check[f['TARGETS']['t1']['b'][index:index+1][0]] = True
-        # if f['TARGETS']['t1']['q1'][index:index+1][0] >= 0:
-        #     check[f['TARGETS']['t1']['q1'][index:index+1][0]] = True
-        # if f['TARGETS']['t1']['q2'][index:index+1][0] >= 0:
-        #     check[f['TARGETS']['t1']['q2'][index:index+1][0]] = True
-        # if f['TARGETS']['t2']['b'][index:index+1][0] >= 0:
-        #     check[f['TARGETS']['t2']['b'][index:index+1][0]] = True
-        # if f['TARGETS']['t2']['q1'][index:index+1][0] >= 0:
-        #     check[f['TARGETS']['t2']['q1'][index:index+1][0]] = True
-        # if f['TARGETS']['t2']['q2'][index:index+1][0] >= 0:
-        #     check[f['TARGETS']['t2']['q2'][index:index+1][0]] = True
-        # print('Mask of jets found to be truth:\n', np.array([check]))
-        # diff = np.logical_xor(f['INPUTS']['Source']['MASK'][index:index+1], np.array([check]))
-        # print(f['TARGETS']['t1']['b'][index:index+1])
-        # print(f['TARGETS']['t1']['q1'][index:index+1])
-        # print(f['TARGETS']['t1']['q2'][index:index+1])
-        # print(f['TARGETS']['t2']['b'][index:index+1])
-        # print(f['TARGETS']['t2']['q1'][index:index+1])
-        # print(f['TARGETS']['t2']['q2'][index:index+1])
+        
     print('Finished')
+
+    # if args.filename.replace
+    # if not os.path.exists(args.filename):
+        # print("File does not exist")
+        # exit(1)
 
     exit(0)

@@ -198,6 +198,7 @@ def source(root_files : list, args: argparse.Namespace):
        if 'allhad_ttH' in args.topo: qgtag_list = []
 
        eventNumber_list = []
+       allHad_list = []
 
        nfiles=len(root_files)
 
@@ -407,7 +408,8 @@ def source(root_files : list, args: argparse.Namespace):
 
                      jet_btag_list.append(jet_b_ls)
                      jet_e_list.append(jet_e_ls)
-                     eventNumber_list.append(nominal.eventNumber)
+                     eventNumber_list.append([ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)])
+                     allHad_list.append
                      # if 'ljets' in args.topo:
                      #     lepton_mass_list.append(lepton_m_ls)
                      #     lepton_pt_list.append(lepton_pt_ls)
@@ -820,8 +822,8 @@ if __name__ == "__main__":
 
        # For now we choose only two files
        selectionSubstring = [ 
-                                   # 'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14859_p5855.4thad26_240130_v06.3_output_root.nominal.root',
-                                   # 'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14860_p5855.4thad26_240130_v06.3_output_root.nominal.root',
+                                   'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14859_p5855.4thad26_240130_v06.3_output_root.nominal.root',
+                                   'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14860_p5855.4thad26_240130_v06.3_output_root.nominal.root',
                                    'user.nhidic.412043.aMcAtNloPythia8EvtGen.DAOD_PHYS.e7101_a907_r14861_p5855.4thad26_240130_v06.3_output_root.nominal.root',
                                    ]
 
