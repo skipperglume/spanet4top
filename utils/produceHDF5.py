@@ -218,7 +218,7 @@ def source(root_files : list, args: argparse.Namespace):
             non_all_had_count = 0
             for i in tqdm(range(events)):
                 # Early stopping for testing
-                if i > 3000 and args.test: break
+                if i > 30 and args.test: break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(events))
@@ -424,18 +424,26 @@ def findPartonJetPairs(nominal, args) -> dict:
     result = {}    
     partonLVs = {}
     jetLVs = {}
-    for topIter in range(len(nominal.truthTop_pt)):
-        partonLVs[f't{topIter+1}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
+    print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
+    print('Targets to Reconstruct:', args.reconstruction.split('|'))
+    groupedNames = {}
+    for group in args.reconstruction.split('|'):
+        subgroups = group.split('(')
+        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
+    print(groupedNames)
+    print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
+    for particle in groupedNames.keys():
+        topIter = int(particle[1])-1
+        # partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
         
-        for parton in ('b','q1','q2'):
-            partonLVs[f't{topIter+1}/{parton}'] = ROOT.TLorentzVector()
+        for parton in groupedNames[particle]:
+            partonLVs[f'{particle}/{parton}'] = ROOT.TLorentzVector()
             if parton == 'b':
-                partonLVs[f't{topIter+1}/{parton}'].SetPtEtaPhiE(nominal.truthTop_b_pt[topIter]  , nominal.truthTop_b_eta[topIter], nominal.truthTop_b_phi[topIter], nominal.truthTop_b_e[topIter])
+                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_b_pt[topIter]  , nominal.truthTop_b_eta[topIter], nominal.truthTop_b_phi[topIter], nominal.truthTop_b_e[topIter])
             elif parton == 'q1':
-                partonLVs[f't{topIter+1}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child1_pt[topIter]  , nominal.truthTop_W_child1_eta[topIter], nominal.truthTop_W_child1_phi[topIter], nominal.truthTop_W_child1_e[topIter])
+                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child1_pt[topIter]  , nominal.truthTop_W_child1_eta[topIter], nominal.truthTop_W_child1_phi[topIter], nominal.truthTop_W_child1_e[topIter])
             elif parton == 'q2':
-                partonLVs[f't{topIter+1}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child2_pt[topIter]  , nominal.truthTop_W_child2_eta[topIter], nominal.truthTop_W_child2_phi[topIter], nominal.truthTop_W_child2_e[topIter])
-
+                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child2_pt[topIter]  , nominal.truthTop_W_child2_eta[topIter], nominal.truthTop_W_child2_phi[topIter], nominal.truthTop_W_child2_e[topIter])
     for jetIter in range(len(nominal.jet_pt)):
         jetLVs[jetIter] = ROOT.TLorentzVector()
         jetLVs[jetIter].SetPtEtaPhiE(nominal.jet_pt[jetIter], nominal.jet_eta[jetIter], nominal.jet_phi[jetIter], nominal.jet_e[jetIter])
@@ -457,6 +465,8 @@ def findPartonJetPairs(nominal, args) -> dict:
                     costMatrix[partonLabel][jetLabel] *= (-1)
     partonToJets = {}
     jetToPartons = {}
+    
+    return result
 
     for partonLabel in costMatrix:
         for jetLabel in costMatrix[partonLabel]:
@@ -469,10 +479,15 @@ def findPartonJetPairs(nominal, args) -> dict:
             else:
                 jetToPartons[jetLabel].append(partonLabel)
 
-    print('Cost Matrix:', costMatrix)
+    print(f'Cost Matrix: {len(costMatrix)}:-')
+    print(costMatrix)
+    print(f'Parton-Jet pairs: {len(partonToJets)}')
     print(partonToJets)
+    print(f'Jet-Parton pairs: {len(jetToPartons)}')
     print(jetToPartons)
-
+    print(f'Number of definitive matches: {min( len(partonToJets), len(jetToPartons) )}')
+    print('Topology: ')
+    print(partonLVs['t1/type'],partonLVs['t2/type'], partonLVs['t3/type'], partonLVs['t4/type'])
     usedJets = []
     for partonLabel in costMatrix:
         if len(costMatrix[partonLabel])==0:
@@ -582,6 +597,7 @@ if __name__ == "__main__":
 
     parser=argparse.ArgumentParser()
     parser.add_argument('-i', '--inloc', default='/home/timoshyd/RAC_4tops_analysis/ntuples/v06_BDT_SPANET_Input/nom', type=str, help='Input file location')
+    parser.add_argument('-r', '--reconstruction', default='t1(b,q1,q2)|t2(b,q1,q2)|t3(b,q1,q2)|t4(b,q1,q2)', type=str, help='Topology of underlying event')
     parser.add_argument('-t', '--topo', default='tttt', type=str, help='Topology of underlying event')
     parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/four_top_SPANET_input', type=str, help='Output location')
     parser.add_argument('-m', '--maxjets', default=18, type=int, help='Max number of jets')
