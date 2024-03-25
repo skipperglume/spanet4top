@@ -86,9 +86,9 @@ def goodEvent( tree, assignmentDict : dict, args : argparse.Namespace) -> bool:
                 indexDict[assignmentDict[jetParton]] += 1
 
     if len(uniqueSet) != len(notUnique):
-        print('Not unique:  ', sorted(notUnique))
-        print('Unique:      ',uniqueSet)
-        print(indexDict)
+        # print('Not unique:  ', sorted(notUnique))
+        # print('Unique:      ',uniqueSet)
+        # print(indexDict)
         return False
 
     
@@ -98,10 +98,10 @@ def goodEvent( tree, assignmentDict : dict, args : argparse.Namespace) -> bool:
         # return False
     for targetTuple in [('t1/b','t1/q1','t1/q2'),('t2/b','t2/q1','t2/q2'),('t3/b','t3/q1','t3/q2'),('t4/b','t4/q1','t4/q2')]:
         if all([assignmentDict[target] == -1 for target in targetTuple]):
-            print(targetTuple, [assignmentDict[target]  for target in targetTuple])
+            # print(targetTuple, [assignmentDict[target]  for target in targetTuple])
             return False
         if sum([assignmentDict[target] == -1 for target in targetTuple]) > 1:
-            print(targetTuple, [assignmentDict[target]  for target in targetTuple])
+            # print(targetTuple, [assignmentDict[target]  for target in targetTuple])
             return False
                      
     # if not uniqness: 
@@ -225,10 +225,12 @@ def source(root_files : list, args: argparse.Namespace):
                     print('Currently collected events: ',len(inputDict['AUX/aux/eventNumber']))
                 nominal.GetEntry(i)
                 # Now do the particle groups, ie the truth targets
-                assignmentDict = assignIndicesljetsttbar(nominal)
+                assignmentDict = assignIndicesljetsttbar(nominal, args)
                 # One could apply cuts here if desired, but usually inclusive training is best!
+                # print(assignmentDict)
                 if not goodEvent(nominal, assignmentDict, args): continue
                 
+                # TODO: check variable - truthTop_isHadTauDecay
                 isLepDecay = [ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)]
                 if sum(isLepDecay) > 0:
                     non_all_had_count += 1
@@ -355,7 +357,6 @@ def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, i
        
     HDF5 = h5py.File(outloc, 'w')
     for featureName in featuresToSave:
-        print(featureName)
         if featureName not in inputDict:
             print(f'ERROR: {featureName} not found in inputDict')
             exit(1)
@@ -392,7 +393,136 @@ def targetsAreUnique(targets : list) -> bool:
                             # print(targets)
             return False
     return True
-def assignIndicesljetsttbar( nominal ):
+
+def compareResults( spaNet, root):
+    ['topCandidate_smallJetIndexReco', 'topCandidate_largeJetIndexReco']
+    pass
+def getRadius(eta : float):
+    defaultR = 0.4
+    if abs(eta) < 2.5:
+        return defaultR
+    else:
+        return defaultR + 0.1*(abs(eta)-2.5)
+def findPartonJetPairs(nominal, args) -> dict:
+    '''
+    Method to find pairings between parton with detected jets. 
+    The assignment target arrays contain the indices of each assignment. 
+    Only sequential input indices may be assignment targets. 
+    Each reconstruction target should be associated with exactly one input vector. 
+    These indices must also be strictly unique. 
+    Any targets which are missing within an event should be marked with -1.
+    '''
+    # ['truthTop_pt', 'truthTop_eta', 'truthTop_phi', 'truthTop_e']
+    # ['truthTop_b_pt', 'truthTop_b_eta', 'truthTop_b_phi', 'truthTop_b_e'] 
+    # ['truthTop_W_pt', 'truthTop_W_eta', 'truthTop_W_phi', 'truthTop_W_e']
+    # ['truthTop_W_child1_pt', 'truthTop_W_child1_eta', 'truthTop_W_child1_phi', 'truthTop_W_child1_e']
+    # 'truthTop_W_child1_pdgId'
+    # ['truthTop_W_child2_pt', 'truthTop_W_child2_eta', 'truthTop_W_child2_phi', 'truthTop_W_child2_e']
+    # 'truthTop_W_child2_pdgId'
+    # ['truthTop_truthJet_pt', 'truthTop_truthJet_eta', 'truthTop_truthJet_phi', 'truthTop_truthJet_e']
+    # 'truthTop_truthJet_index' 'truthTop_truthJet_flavor',  
+    result = {}    
+    partonLVs = {}
+    jetLVs = {}
+    for topIter in range(len(nominal.truthTop_pt)):
+        partonLVs[f't{topIter+1}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
+        
+        for parton in ('b','q1','q2'):
+            partonLVs[f't{topIter+1}/{parton}'] = ROOT.TLorentzVector()
+            if parton == 'b':
+                partonLVs[f't{topIter+1}/{parton}'].SetPtEtaPhiE(nominal.truthTop_b_pt[topIter]  , nominal.truthTop_b_eta[topIter], nominal.truthTop_b_phi[topIter], nominal.truthTop_b_e[topIter])
+            elif parton == 'q1':
+                partonLVs[f't{topIter+1}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child1_pt[topIter]  , nominal.truthTop_W_child1_eta[topIter], nominal.truthTop_W_child1_phi[topIter], nominal.truthTop_W_child1_e[topIter])
+            elif parton == 'q2':
+                partonLVs[f't{topIter+1}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child2_pt[topIter]  , nominal.truthTop_W_child2_eta[topIter], nominal.truthTop_W_child2_phi[topIter], nominal.truthTop_W_child2_e[topIter])
+
+    for jetIter in range(len(nominal.jet_pt)):
+        jetLVs[jetIter] = ROOT.TLorentzVector()
+        jetLVs[jetIter].SetPtEtaPhiE(nominal.jet_pt[jetIter], nominal.jet_eta[jetIter], nominal.jet_phi[jetIter], nominal.jet_e[jetIter])
+    
+    
+    costMatrix = {}
+
+    # print(jetLVs, partonLVs)
+    for jetLabel in jetLVs:
+        for partonLabel in partonLVs:
+            if 'type' in partonLabel: continue
+            if partonLabel not in costMatrix:
+                costMatrix[partonLabel] = {}
+            if partonLVs[partonLabel].DeltaR(jetLVs[jetLabel]) < getRadius(partonLVs[partonLabel].Eta())  :
+                costMatrix[partonLabel][jetLabel] = partonLVs[partonLabel].DeltaR(jetLVs[jetLabel])
+                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 3 and 'b' in partonLabel:
+                    costMatrix[partonLabel][jetLabel] *= (-1)
+                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 4 and 'b' not in partonLabel:
+                    costMatrix[partonLabel][jetLabel] *= (-1)
+    partonToJets = {}
+    jetToPartons = {}
+
+    for partonLabel in costMatrix:
+        for jetLabel in costMatrix[partonLabel]:
+            if partonLabel not in partonToJets:
+                partonToJets[partonLabel] = [jetLabel]
+            else:
+                partonToJets[partonLabel].append(jetLabel)
+            if jetLabel not in jetToPartons:
+                jetToPartons[jetLabel] = [partonLabel]
+            else:
+                jetToPartons[jetLabel].append(partonLabel)
+
+    print('Cost Matrix:', costMatrix)
+    print(partonToJets)
+    print(jetToPartons)
+
+    usedJets = []
+    for partonLabel in costMatrix:
+        if len(costMatrix[partonLabel])==0:
+            result[partonLabel] = -1
+            continue
+        
+        if len(partonToJets[partonLabel]) == 1 and partonToJets[partonLabel][0] not in usedJets:
+            result[partonLabel] = partonToJets[partonLabel][0]
+            usedJets.append(result[partonLabel])
+    for partonLabel in costMatrix:
+        if partonLabel in result: continue
+        if len(partonToJets[partonLabel]) > 1 and partonLabel not in  result:
+            for jetLabel in partonToJets[partonLabel]:
+                if jetLabel not in usedJets:
+                    result[partonLabel] = jetLabel
+                    usedJets.append(jetLabel)
+                    print('Happend \'ere!')
+                    break
+        if partonLabel not in result:
+            result[partonLabel] = -1 
+    topLVs = {}
+    for partonLabel in result:
+        if 't' in partonLabel:
+            if result[partonLabel] != -1:
+                if partonLabel.split('/')[0] not in topLVs :
+                    topLVs[partonLabel.split('/')[0]] = jetLVs[result[partonLabel]]
+                else:
+                    topLVs[partonLabel.split('/')[0]] += jetLVs[result[partonLabel]]
+    print(topLVs)
+    for topIter in range(len(nominal.truthTop_pt)):
+        mass = (partonLVs[f't{topIter+1}/b']+partonLVs[f't{topIter+1}/q2']+partonLVs[f't{topIter+1}/q1']).M()*0.001
+
+        matchedMass = 0
+
+        print(f't{topIter+1}',partonLVs[f't{topIter+1}/type'],',',mass)
+        if f't{topIter+1}' in topLVs:
+            print( ', ',topLVs[f't{topIter+1}'].M()*0.001)
+    numberAssigned = 0
+    for partonLabel in result:
+        if result[partonLabel] != -1:
+            numberAssigned += 1
+    if numberAssigned != min(len(partonToJets), len(jetToPartons)):
+        print(f'CHECK THIS ONE: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
+    if abs(numberAssigned - min(len(partonToJets), len(jetToPartons))) > 1 :
+        print(f'Serious! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
+    return result
+
+
+
+def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     """
     Here is where you need to do the truth matching
     """
@@ -411,19 +541,25 @@ def assignIndicesljetsttbar( nominal ):
         't4/q2' : -1,
     }
     
-    result['t1/b'] = nominal.t1_b_Jeti
-    result['t1/q1'] = nominal.t1_w0_Jeti
-    result['t1/q2'] = nominal.t1_w1_Jeti
-    result['t2/b'] = nominal.t2_b_Jeti
-    result['t2/q1'] = nominal.t2_w0_Jeti
-    result['t2/q2'] = nominal.t2_w1_Jeti
-    result['t3/b'] = nominal.t1_b_Jeti
-    result['t3/q1'] = nominal.t3_w0_Jeti
-    result['t3/q2'] = nominal.t3_w1_Jeti
-    result['t4/b'] = nominal.t4_b_Jeti
-    result['t4/q1'] = nominal.t4_w0_Jeti
-    result['t4/q2'] = nominal.t4_w1_Jeti
+    for topIter in range(4):
+        topIter +=1
+        for parton in ('b','w0','w1'):
+            # result[f't{topIter}/{parton}'] = nominal.t1_b_Jeti
+            spaNetParton = f't{topIter}/'
+            if parton == 'b':
+                spaNetParton += 'b'
+            if parton[0] == 'w':
+                spaNetParton += f'q{1+int(parton[1])}'
+            rootParton = f't{topIter}_{parton}_Jeti'
+            # print(spaNetParton, rootParton)
+            result[spaNetParton] = getattr(nominal, rootParton)
+    
 
+    newAss = findPartonJetPairs(nominal, args)
+    print('New Assignment:')
+    print( newAss)
+    print('Old Assignment:')
+    print(result)
     return result
 
         
