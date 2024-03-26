@@ -434,7 +434,7 @@ def findPartonJetPairs(nominal, args) -> dict:
     print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
     for particle in groupedNames.keys():
         topIter = int(particle[1])-1
-        # partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
+        partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
         
         for parton in groupedNames[particle]:
             partonLVs[f'{particle}/{parton}'] = ROOT.TLorentzVector()
@@ -451,7 +451,8 @@ def findPartonJetPairs(nominal, args) -> dict:
     
     costMatrix = {}
 
-    # print(jetLVs, partonLVs)
+    # Create a cost matrix for each parton-jet pair with penalties and reewards
+    # e.g. if a jet is a b-jet and the parton is a b-jet ...
     for jetLabel in jetLVs:
         for partonLabel in partonLVs:
             if 'type' in partonLabel: continue
@@ -459,15 +460,14 @@ def findPartonJetPairs(nominal, args) -> dict:
                 costMatrix[partonLabel] = {}
             if partonLVs[partonLabel].DeltaR(jetLVs[jetLabel]) < getRadius(partonLVs[partonLabel].Eta())  :
                 costMatrix[partonLabel][jetLabel] = partonLVs[partonLabel].DeltaR(jetLVs[jetLabel])
-                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 3 and 'b' in partonLabel:
-                    costMatrix[partonLabel][jetLabel] *= (-1)
-                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 4 and 'b' not in partonLabel:
-                    costMatrix[partonLabel][jetLabel] *= (-1)
+                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 3 and '/b' in partonLabel:
+                    costMatrix[partonLabel][jetLabel] += (-1)
+                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 4 and '/b' not in partonLabel:
+                    costMatrix[partonLabel][jetLabel] += (1)
     partonToJets = {}
     jetToPartons = {}
     
-    return result
-
+    # Create dictionaries to store the parton-jet and jet-parton pairs
     for partonLabel in costMatrix:
         for jetLabel in costMatrix[partonLabel]:
             if partonLabel not in partonToJets:
@@ -482,21 +482,31 @@ def findPartonJetPairs(nominal, args) -> dict:
     print(f'Cost Matrix: {len(costMatrix)}:-')
     print(costMatrix)
     print(f'Parton-Jet pairs: {len(partonToJets)}')
-    print(partonToJets)
+    for partonLabel in partonToJets:
+        print(partonLabel, ":", partonToJets[partonLabel], '-', len(partonToJets[partonLabel]))
     print(f'Jet-Parton pairs: {len(jetToPartons)}')
-    print(jetToPartons)
+    for jetLabel in jetToPartons:
+        print(jetLabel, ":", jetToPartons[jetLabel], '-', len(jetToPartons[jetLabel]))
     print(f'Number of definitive matches: {min( len(partonToJets), len(jetToPartons) )}')
+    
     print('Topology: ')
     print(partonLVs['t1/type'],partonLVs['t2/type'], partonLVs['t3/type'], partonLVs['t4/type'])
+
+    
     usedJets = []
+    print('truth_allHad:', nominal.truth_allHad)
+    print(nominal.truthTop_isLepDecay)
+
+    # Filling the result dictionary with the definitive matches (1 jet - 1 parton correspondence as weel as missing jets)
     for partonLabel in costMatrix:
         if len(costMatrix[partonLabel])==0:
             result[partonLabel] = -1
             continue
         
-        if len(partonToJets[partonLabel]) == 1 and partonToJets[partonLabel][0] not in usedJets:
+        if len(partonToJets[partonLabel]) == 1 and partonToJets[partonLabel][0] not in usedJets and jetToPartons[partonToJets[partonLabel][0]]:
             result[partonLabel] = partonToJets[partonLabel][0]
             usedJets.append(result[partonLabel])
+    # return result
     for partonLabel in costMatrix:
         if partonLabel in result: continue
         if len(partonToJets[partonLabel]) > 1 and partonLabel not in  result:
