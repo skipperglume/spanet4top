@@ -73,25 +73,15 @@ def number_of_jets( topTargets : list ) -> int:
 
 def goodEvent( tree, args : argparse.Namespace) -> bool:
     
-    if tree.n_jet < 8: return False
-    
-
-    
-
-    
-
+    if not tree.n_jet >= 8: return False
 
     # if (number_of_jets([t1q1, t1q2, t1b] ) < 2 ) or (number_of_jets([t2q1, t2q2, t2b] ) < 2 ) or (number_of_jets([t3q1, t3q2, t3b] ) < 2 ) or (number_of_jets([t4q1, t4q2, t4b] ) < 2 ): 
         # return False
 
-    
-
     # Check that the event is all hadronic:
     isNotAllHad = 1 if sum([float(x.encode("utf-8").hex()) for x in list(tree.truthTop_isLepDecay)]) > 0 else 0
     if isNotAllHad: return False
-    print('TEST:')
     print('Is Not All Hadronic:', isNotAllHad)
-
     
     return True
 def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> bool:
@@ -239,7 +229,7 @@ def source(root_files : list, args: argparse.Namespace):
             non_all_had_count = 0
             for i in tqdm(range(eventNumber)):
                 # Early stopping for testing
-                if i > 60 and args.test: break
+                if args.test and i > 30 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
@@ -427,7 +417,10 @@ def getRadius(eta : float):
         return defaultR + 0.1*(abs(eta)-2.5)
 
 def massFromLVs(LVs : list, scale=1.0 ) -> float:
-    sumLV = LVs[0]
+    if len(LVs) == 0:
+        print('Size of LVs should not be zero')
+        exit(1)
+    sumLV = ROOT.TLorentzVector( LVs[0] )
     for lvIndex in range(1, len(LVs)):
         sumLV += LVs[lvIndex]
     mass = sumLV.M()
@@ -456,6 +449,50 @@ def jetSetMass(nominal , jetSet : list, args : argparse.Namespace) -> float:
 
 
     return mass
+
+def getTrue_N_DetectedMasses(partonLVs : dict, jetLVs : dict, assignemnt : dict, args : argparse.Namespace) -> dict:
+    '''
+    This function returns the masses of the parton level and the detected level.
+    '''
+    result = {}
+    for group in args.reconstruction.split('|'):
+        subgroups = group.split('(')
+        particleName = subgroups[0]
+        partons = subgroups[1][:-1].split(',')
+        partonSet = []
+        jetSet = []
+        jetDict = {}
+        particleMass = 0
+        detectedMass = 0
+        for parton in partons:
+            if f'{particleName}/{parton}' in partonLVs:
+                partonSet.append(partonLVs[f'{particleName}/{parton}'])
+            
+            if f'{particleName}/{parton}' in assignemnt and assignemnt[f'{particleName}/{parton}'] != -1:
+                jetSet.append(  jetLVs[assignemnt[f'{particleName}/{parton}']] )
+                jetDict[parton] = assignemnt[f'{particleName}/{parton}']
+        
+        particleMass = massFromLVs(partonSet, 0.001)
+        
+        # print('Jet Lorentz Vectors:')
+        # for lv in jetSet:
+        #     print( lv.Pt()*0.001, lv.Eta(), lv.Phi(), lv.E()*0.001)
+
+        detectedMass = massFromLVs(jetSet, 0.001) if len(jetSet)>0 else -1.0
+        result[ particleName ] = {'particle': particleMass, 'detected': detectedMass, 'jets': jetDict}
+    return result
+
+def printMassInfo(partonLVs : dict, jetLVs : dict, assignemnt : dict, args : argparse.Namespace) -> None:
+    '''
+    This function prints the mass information of parton level and matched one.
+    '''
+    compressedDict = getTrue_N_DetectedMasses(partonLVs, jetLVs, assignemnt, args)
+    for particle in compressedDict:
+        particleMass = compressedDict[particle]['particle']
+        detectedMass = compressedDict[particle]['detected']
+        jetSet = compressedDict[particle]['jets']
+        print(f'{particle} : True Mass: {particleMass}; Detected Mass {detectedMass} with {jetSet} jets matched.')
+    return
 def findPartonJetPairs(nominal, args) -> dict:
     '''
     Method to find pairings between parton with detected jets. 
@@ -474,17 +511,20 @@ def findPartonJetPairs(nominal, args) -> dict:
     # 'truthTop_W_child2_pdgId'
     # ['truthTop_truthJet_pt', 'truthTop_truthJet_eta', 'truthTop_truthJet_phi', 'truthTop_truthJet_e']
     # 'truthTop_truthJet_index' 'truthTop_truthJet_flavor',  
-    result = {}    
+
+    # This final matching between partons and jets
+    result = {}
+    # Parton and jet Lorentz Vectors Dictionary {Name : LV}
     partonLVs = {}
     jetLVs = {}
     print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
-    print('Targets to Reconstruct:', args.reconstruction.split('|'))
+    # print('Targets to Reconstruct:', args.reconstruction.split('|'))
     groupedNames = {}
     for group in args.reconstruction.split('|'):
         subgroups = group.split('(')
         groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
     print(groupedNames)
-    print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
+    # print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
     for particle in groupedNames.keys():
         topIter = int(particle[1:])-1
         partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
@@ -497,9 +537,11 @@ def findPartonJetPairs(nominal, args) -> dict:
                 partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child1_pt[topIter]  , nominal.truthTop_W_child1_eta[topIter], nominal.truthTop_W_child1_phi[topIter], nominal.truthTop_W_child1_e[topIter])
             elif parton == 'q2':
                 partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child2_pt[topIter]  , nominal.truthTop_W_child2_eta[topIter], nominal.truthTop_W_child2_phi[topIter], nominal.truthTop_W_child2_e[topIter])
+    
     for jetIter in range(len(nominal.jet_pt)):
         jetLVs[jetIter] = ROOT.TLorentzVector()
         jetLVs[jetIter].SetPtEtaPhiE(nominal.jet_pt[jetIter], nominal.jet_eta[jetIter], nominal.jet_phi[jetIter], nominal.jet_e[jetIter])
+        # print(jetLVs[jetIter].Pt()*0.001, jetLVs[jetIter].Eta(), jetLVs[jetIter].Phi(), jetLVs[jetIter].E()*0.001)
     
     
     costMatrix = {}
@@ -560,45 +602,32 @@ def findPartonJetPairs(nominal, args) -> dict:
             result[partonLabel] = partonToJets[partonLabel][0]
             usedJets.append(result[partonLabel])
     # return result
-    for partonLabel in costMatrix:
-        if partonLabel in result: continue
-        if len(partonToJets[partonLabel]) > 1 and partonLabel not in  result:
-            for jetLabel in partonToJets[partonLabel]:
-                if jetLabel not in usedJets:
-                    result[partonLabel] = jetLabel
-                    usedJets.append(jetLabel)
-                    print('Happend \'ere!')
-                    break
-        if partonLabel not in result:
-            result[partonLabel] = -1 
-    topLVs = {}
-    for partonLabel in result:
-        if 't' in partonLabel:
-            if result[partonLabel] != -1:
-                if partonLabel.split('/')[0] not in topLVs :
-                    topLVs[partonLabel.split('/')[0]] = jetLVs[result[partonLabel]]
-                else:
-                    topLVs[partonLabel.split('/')[0]] += jetLVs[result[partonLabel]]
-    print(topLVs)
-    for particle in groupedNames.keys():
-        jetSet = []
-        for parton in groupedNames[particle]:
-            jetSet.append(result[f'{particle}/{parton}'])
-        mass = jetSetMass(nominal, jetSet, args)
+    # for partonLabel in costMatrix:
+    #     if partonLabel in result: continue
+    #     if len(partonToJets[partonLabel]) > 1 and partonLabel not in  result:
+    #         for jetLabel in partonToJets[partonLabel]:
+    #             if jetLabel not in usedJets:
+    #                 result[partonLabel] = jetLabel
+    #                 usedJets.append(jetLabel)
+    #                 print('Happend \'ere!')
+    #                 break
+    #     if partonLabel not in result:
+    #         result[partonLabel] = -1 
+    
 
-        matchedMass = 0
-
-        print(f't{topIter+1}', 'decay:', partonLVs[f't{topIter+1}/type'],',',mass)
-        if f't{topIter+1}' in topLVs:
-            print( ', ', topLVs[f't{topIter+1}'].M()*0.001)
     numberAssigned = 0
     for partonLabel in result:
         if result[partonLabel] != -1:
             numberAssigned += 1
+    
+    printMassInfo(partonLVs, jetLVs, result, args)
+    print(result)
+    # print(getTrue_N_DetectedMasses(partonLVs, jetLVs, result, args))
+
     if numberAssigned != min(len(partonToJets), len(jetToPartons)):
-        print(f'CHECK THIS ONE: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
+        print(f'Missing one pair till best: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
     if abs(numberAssigned - min(len(partonToJets), len(jetToPartons))) > 1 :
-        print(f'Serious! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
+        print(f'MISSING MORE THAN ONE! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
     return result
 
 
@@ -607,20 +636,15 @@ def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     """
     Here is where you need to do the truth matching
     """
-    result = {
-        't1/b' : -1,
-        't1/q1' : -1,
-        't1/q2' : -1,
-        't2/b' : -1,
-        't2/q1' : -1,
-        't2/q2' : -1,
-        't3/b' : -1,
-        't3/q1' : -1,
-        't3/q2' : -1,
-        't4/b' : -1,
-        't4/q1' : -1,
-        't4/q2' : -1,
-    }
+    groupedNames = {}
+    for group in args.reconstruction.split('|'):
+        subgroups = group.split('(')
+        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
+    result = {}
+    for group in groupedNames:
+        for parton in groupedNames[group]:
+            result[group+'/'+parton] = -1
+    
     
     for topIter in range(4):
         topIter +=1
@@ -637,9 +661,13 @@ def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     
 
     newAss = findPartonJetPairs(nominal, args)
-    print('New Assignment:')
-    print( newAss)
-    print('Old Assignment:')
+    print('Old | New Assignments:')
+    
+    for group in groupedNames:
+        for parton in groupedNames[group]:
+            oldMatch = result[group+'/'+parton] if group+'/'+parton in result else '-1'
+            newMatch = newAss[group+'/'+parton] if group+'/'+parton in newAss else '-1'
+            print(group+'/'+parton+":", oldMatch, '|', newMatch)
     print(result)
     return result
 
