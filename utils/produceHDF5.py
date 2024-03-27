@@ -9,6 +9,9 @@ import glob
 import re
 from tqdm import tqdm
 
+# TODO: implement Py Parsing
+# import pyparsing
+
 def eTOm(feats):
        """
        Find jet masses by using TLorentzVector().SetPtEtaPhiE(pt, eta, phi, e), 
@@ -68,9 +71,31 @@ def number_of_jets( topTargets : list ) -> int:
                      result += 1
        return result
 
-def goodEvent( tree, assignmentDict : dict, args : argparse.Namespace) -> bool:
+def goodEvent( tree, args : argparse.Namespace) -> bool:
     
     if tree.n_jet < 8: return False
+    
+
+    
+
+    
+
+
+    # if (number_of_jets([t1q1, t1q2, t1b] ) < 2 ) or (number_of_jets([t2q1, t2q2, t2b] ) < 2 ) or (number_of_jets([t3q1, t3q2, t3b] ) < 2 ) or (number_of_jets([t4q1, t4q2, t4b] ) < 2 ): 
+        # return False
+
+    
+
+    # Check that the event is all hadronic:
+    isNotAllHad = 1 if sum([float(x.encode("utf-8").hex()) for x in list(tree.truthTop_isLepDecay)]) > 0 else 0
+    if isNotAllHad: return False
+    print('TEST:')
+    print('Is Not All Hadronic:', isNotAllHad)
+
+    
+    return True
+def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> bool:
+
     for jetParton in assignmentDict:
         if assignmentDict[jetParton] >= args.maxjets:
             return False
@@ -84,28 +109,24 @@ def goodEvent( tree, assignmentDict : dict, args : argparse.Namespace) -> bool:
                 indexDict[assignmentDict[jetParton]] = 1
             else:
                 indexDict[assignmentDict[jetParton]] += 1
-
+    # Check uniqueness of the assignments. Same jet should not correspond to different partons
     if len(uniqueSet) != len(notUnique):
         # print('Not unique:  ', sorted(notUnique))
         # print('Unique:      ',uniqueSet)
         # print(indexDict)
         return False
 
-    
+    # args.reconstruction
 
-
-    # if (number_of_jets([t1q1, t1q2, t1b] ) < 2 ) or (number_of_jets([t2q1, t2q2, t2b] ) < 2 ) or (number_of_jets([t3q1, t3q2, t3b] ) < 2 ) or (number_of_jets([t4q1, t4q2, t4b] ) < 2 ): 
-        # return False
-    for targetTuple in [('t1/b','t1/q1','t1/q2'),('t2/b','t2/q1','t2/q2'),('t3/b','t3/q1','t3/q2'),('t4/b','t4/q1','t4/q2')]:
-        if all([assignmentDict[target] == -1 for target in targetTuple]):
-            # print(targetTuple, [assignmentDict[target]  for target in targetTuple])
+    groupedNames = {}
+    for group in args.reconstruction.split('|'):
+        subgroups = group.split('(')
+        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
+    for particle in groupedNames:
+        if all([ assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]):
             return False
-        if sum([assignmentDict[target] == -1 for target in targetTuple]) > 1:
-            # print(targetTuple, [assignmentDict[target]  for target in targetTuple])
+        if sum([assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]) > 1:
             return False
-                     
-    # if not uniqness: 
-    #     return False
     return True
 
 def source(root_files : list, args: argparse.Namespace):
@@ -211,24 +232,25 @@ def source(root_files : list, args: argparse.Namespace):
             # truth_events, nominal_events = truth.GetEntries(), nominal.GetEntries()
             # truth.BuildIndex("runNumber", "eventNumber")
                      
-            events = nominal.GetEntries()
+            eventNumber = nominal.GetEntries()
 
             # Counters to display need info about our samples
             all_had_count = 0
             non_all_had_count = 0
-            for i in tqdm(range(events)):
+            for i in tqdm(range(eventNumber)):
                 # Early stopping for testing
-                if i > 30 and args.test: break
+                if i > 60 and args.test: break
                 #print(i)
                 if i % 50000 == 0: 
-                    print(str(i)+"/"+str(events))
+                    print(str(i)+"/"+str(eventNumber))
                     print('Currently collected events: ',len(inputDict['AUX/aux/eventNumber']))
                 nominal.GetEntry(i)
                 # Now do the particle groups, ie the truth targets
-                assignmentDict = assignIndicesljetsttbar(nominal, args)
                 # One could apply cuts here if desired, but usually inclusive training is best!
                 # print(assignmentDict)
-                if not goodEvent(nominal, assignmentDict, args): continue
+                if not goodEvent(nominal, args): continue
+                assignmentDict = assignIndicesljetsttbar(nominal, args)
+                goodAssignment(nominal, assignmentDict, args)
                 
                 # TODO: check variable - truthTop_isHadTauDecay
                 isLepDecay = [ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)]
@@ -403,6 +425,37 @@ def getRadius(eta : float):
         return defaultR
     else:
         return defaultR + 0.1*(abs(eta)-2.5)
+
+def massFromLVs(LVs : list, scale=1.0 ) -> float:
+    sumLV = LVs[0]
+    for lvIndex in range(1, len(LVs)):
+        sumLV += LVs[lvIndex]
+    mass = sumLV.M()
+    return mass * scale
+
+def jetSetMass(nominal , jetSet : list, args : argparse.Namespace) -> float:
+    '''
+    This function evaluates the invariant mass of a set of jets. Returns the mass of the set of jets. 
+    As well does checks that the set of jets is reasonable. 
+    '''
+    mass = 0.0
+    if len(jetSet) == 0:
+        print('Size of jets set should not be zero')
+        exit(1)
+    
+    LVs = []
+    for jetIndex in jetSet:
+        # count number of repeated jetIndex in jetSet:
+        if jetIndex != -1 and jetSet.count(jetIndex) > 1:
+            print(f'Repeated jetIndex {jetIndex} in jetSet {jetSet}')
+            exit(1)
+        lv = ROOT.TLorentzVector()
+        lv.SetPtEtaPhiE(nominal.jet_pt[jetIndex], nominal.jet_eta[jetIndex], nominal.jet_phi[jetIndex], nominal.jet_e[jetIndex])
+        LVs.append(lv)
+    mass = massFromLVs(LVs)
+
+
+    return mass
 def findPartonJetPairs(nominal, args) -> dict:
     '''
     Method to find pairings between parton with detected jets. 
@@ -433,7 +486,7 @@ def findPartonJetPairs(nominal, args) -> dict:
     print(groupedNames)
     print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
     for particle in groupedNames.keys():
-        topIter = int(particle[1])-1
+        topIter = int(particle[1:])-1
         partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
         
         for parton in groupedNames[particle]:
@@ -527,14 +580,17 @@ def findPartonJetPairs(nominal, args) -> dict:
                 else:
                     topLVs[partonLabel.split('/')[0]] += jetLVs[result[partonLabel]]
     print(topLVs)
-    for topIter in range(len(nominal.truthTop_pt)):
-        mass = (partonLVs[f't{topIter+1}/b']+partonLVs[f't{topIter+1}/q2']+partonLVs[f't{topIter+1}/q1']).M()*0.001
+    for particle in groupedNames.keys():
+        jetSet = []
+        for parton in groupedNames[particle]:
+            jetSet.append(result[f'{particle}/{parton}'])
+        mass = jetSetMass(nominal, jetSet, args)
 
         matchedMass = 0
 
-        print(f't{topIter+1}',partonLVs[f't{topIter+1}/type'],',',mass)
+        print(f't{topIter+1}', 'decay:', partonLVs[f't{topIter+1}/type'],',',mass)
         if f't{topIter+1}' in topLVs:
-            print( ', ',topLVs[f't{topIter+1}'].M()*0.001)
+            print( ', ', topLVs[f't{topIter+1}'].M()*0.001)
     numberAssigned = 0
     for partonLabel in result:
         if result[partonLabel] != -1:
@@ -618,6 +674,7 @@ if __name__ == "__main__":
     parser.add_argument('--ignoreDecay', action='store_true', help='Ignore the decay type of tops')
     parser.add_argument('-p','--prefix',default='year17_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files')
     parser.add_argument('-s','--suffix',default='_tttt', choices=['_tttt',], help='Suffix to separate files')
+    parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files')
     args = parser.parse_args()
 
     if args.prefix != '':
