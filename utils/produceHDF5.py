@@ -229,7 +229,7 @@ def source(root_files : list, args: argparse.Namespace):
             non_all_had_count = 0
             for i in tqdm(range(eventNumber)):
                 # Early stopping for testing
-                if args.test and i > 30 : break
+                if args.test and i > 3000 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
@@ -493,6 +493,87 @@ def printMassInfo(partonLVs : dict, jetLVs : dict, assignemnt : dict, args : arg
         jetSet = compressedDict[particle]['jets']
         print(f'{particle} : True Mass: {particleMass}; Detected Mass {detectedMass} with {jetSet} jets matched.')
     return
+
+def printPartonJetMatches(costMatrix : dict, partonToJets : dict, jetToPartons : dict):
+    print(f'Cost Matrix: {len(costMatrix)}:-')
+    print(costMatrix)
+    print(f'Parton-Jet pairs: {len(partonToJets)}')
+    for partonLabel in partonToJets:
+        print(partonLabel, ":", partonToJets[partonLabel], '-', len(partonToJets[partonLabel]))
+    print(f'Jet-Parton pairs: {len(jetToPartons)}')
+    for jetLabel in jetToPartons:
+        print(jetLabel, ":", jetToPartons[jetLabel], '-', len(jetToPartons[jetLabel]))
+    print(f'Number of definitive matches: {min( len(partonToJets), len(jetToPartons) )}')
+
+def getPartonLVs(nominal, args : argparse.Namespace) -> dict:
+    partonLVs = {}    
+    groupedNames = {}
+    for group in args.reconstruction.split('|'):
+        subgroups = group.split('(')
+        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
+    
+    # print(groupedNames)
+    # print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
+        
+    for particle in groupedNames.keys():
+        topIter = int(particle[1:])-1
+        partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
+        
+        for parton in groupedNames[particle]:
+            partonLVs[f'{particle}/{parton}'] = ROOT.TLorentzVector()
+            if parton == 'b':
+                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_b_pt[topIter]  , nominal.truthTop_b_eta[topIter], nominal.truthTop_b_phi[topIter], nominal.truthTop_b_e[topIter])
+            elif parton == 'q1':
+                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child1_pt[topIter]  , nominal.truthTop_W_child1_eta[topIter], nominal.truthTop_W_child1_phi[topIter], nominal.truthTop_W_child1_e[topIter])
+            elif parton == 'q2':
+                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child2_pt[topIter]  , nominal.truthTop_W_child2_eta[topIter], nominal.truthTop_W_child2_phi[topIter], nominal.truthTop_W_child2_e[topIter])
+    
+    return partonLVs
+
+def getJetLVs(nominal, args : argparse.Namespace) -> dict:
+    jetLVs = {}
+    for jetIter in range(len(nominal.jet_pt)):
+        jetLVs[jetIter] = ROOT.TLorentzVector()
+        jetLVs[jetIter].SetPtEtaPhiE(nominal.jet_pt[jetIter], nominal.jet_eta[jetIter], nominal.jet_phi[jetIter], nominal.jet_e[jetIter])
+    return jetLVs
+
+def getCostMatrix(nominal, partonLVs : dict, jetLVs : dict, args : argparse.Namespace) -> dict:
+    ''' 
+    Create a cost matrix for each parton-jet pair with penalties and reewards
+    e.g. if a jet is a b-jet and the parton is a b-jet ...
+    '''
+    costMatrix = {}
+    for jetLabel in jetLVs:
+        for partonLabel in partonLVs:
+            if 'type' in partonLabel: continue
+            if partonLabel not in costMatrix:
+                costMatrix[partonLabel] = {}
+            if partonLVs[partonLabel].DeltaR(jetLVs[jetLabel]) < getRadius(partonLVs[partonLabel].Eta())  :
+                costMatrix[partonLabel][jetLabel] = partonLVs[partonLabel].DeltaR(jetLVs[jetLabel])
+                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 3 and '/b' in partonLabel:
+                    costMatrix[partonLabel][jetLabel] += (-1)
+                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 4 and '/b' not in partonLabel:
+                    costMatrix[partonLabel][jetLabel] += (1)
+    return costMatrix
+
+def getPairWiseDicts(costMatrix : dict) -> list:
+    '''
+    Create dictionaries to store the parton-jet and jet-parton pairs
+    '''
+    partonToJets = {}
+    jetToPartons = {}
+    for partonLabel in costMatrix:
+        for jetLabel in costMatrix[partonLabel]:
+            if partonLabel not in partonToJets:
+                partonToJets[partonLabel] = [jetLabel]
+            else:
+                partonToJets[partonLabel].append(jetLabel)
+            if jetLabel not in jetToPartons:
+                jetToPartons[jetLabel] = [partonLabel]
+            else:
+                jetToPartons[jetLabel].append(partonLabel)
+    return (partonToJets, jetToPartons)
+
 def findPartonJetPairs(nominal, args) -> dict:
     '''
     Method to find pairings between parton with detected jets. 
@@ -515,104 +596,49 @@ def findPartonJetPairs(nominal, args) -> dict:
     # This final matching between partons and jets
     result = {}
     # Parton and jet Lorentz Vectors Dictionary {Name : LV}
-    partonLVs = {}
-    jetLVs = {}
+    partonLVs = getPartonLVs(nominal, args)
+    jetLVs = getJetLVs(nominal, args)
     print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
     # print('Targets to Reconstruct:', args.reconstruction.split('|'))
-    groupedNames = {}
-    for group in args.reconstruction.split('|'):
-        subgroups = group.split('(')
-        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
-    print(groupedNames)
-    # print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
-    for particle in groupedNames.keys():
-        topIter = int(particle[1:])-1
-        partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
-        
-        for parton in groupedNames[particle]:
-            partonLVs[f'{particle}/{parton}'] = ROOT.TLorentzVector()
-            if parton == 'b':
-                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_b_pt[topIter]  , nominal.truthTop_b_eta[topIter], nominal.truthTop_b_phi[topIter], nominal.truthTop_b_e[topIter])
-            elif parton == 'q1':
-                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child1_pt[topIter]  , nominal.truthTop_W_child1_eta[topIter], nominal.truthTop_W_child1_phi[topIter], nominal.truthTop_W_child1_e[topIter])
-            elif parton == 'q2':
-                partonLVs[f'{particle}/{parton}'].SetPtEtaPhiE(nominal.truthTop_W_child2_pt[topIter]  , nominal.truthTop_W_child2_eta[topIter], nominal.truthTop_W_child2_phi[topIter], nominal.truthTop_W_child2_e[topIter])
-    
-    for jetIter in range(len(nominal.jet_pt)):
-        jetLVs[jetIter] = ROOT.TLorentzVector()
-        jetLVs[jetIter].SetPtEtaPhiE(nominal.jet_pt[jetIter], nominal.jet_eta[jetIter], nominal.jet_phi[jetIter], nominal.jet_e[jetIter])
-        # print(jetLVs[jetIter].Pt()*0.001, jetLVs[jetIter].Eta(), jetLVs[jetIter].Phi(), jetLVs[jetIter].E()*0.001)
     
     
-    costMatrix = {}
+    costMatrix = getCostMatrix(nominal, partonLVs, jetLVs, args)
 
-    # Create a cost matrix for each parton-jet pair with penalties and reewards
-    # e.g. if a jet is a b-jet and the parton is a b-jet ...
-    for jetLabel in jetLVs:
-        for partonLabel in partonLVs:
-            if 'type' in partonLabel: continue
-            if partonLabel not in costMatrix:
-                costMatrix[partonLabel] = {}
-            if partonLVs[partonLabel].DeltaR(jetLVs[jetLabel]) < getRadius(partonLVs[partonLabel].Eta())  :
-                costMatrix[partonLabel][jetLabel] = partonLVs[partonLabel].DeltaR(jetLVs[jetLabel])
-                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 3 and '/b' in partonLabel:
-                    costMatrix[partonLabel][jetLabel] += (-1)
-                if nominal.jet_tagWeightBin_DL1dv01_Continuous[jetLabel] >= 4 and '/b' not in partonLabel:
-                    costMatrix[partonLabel][jetLabel] += (1)
-    partonToJets = {}
-    jetToPartons = {}
-    
-    # Create dictionaries to store the parton-jet and jet-parton pairs
-    for partonLabel in costMatrix:
-        for jetLabel in costMatrix[partonLabel]:
-            if partonLabel not in partonToJets:
-                partonToJets[partonLabel] = [jetLabel]
-            else:
-                partonToJets[partonLabel].append(jetLabel)
-            if jetLabel not in jetToPartons:
-                jetToPartons[jetLabel] = [partonLabel]
-            else:
-                jetToPartons[jetLabel].append(partonLabel)
+    partonToJets , jetToPartons = getPairWiseDicts(costMatrix)
 
-    print(f'Cost Matrix: {len(costMatrix)}:-')
-    print(costMatrix)
-    print(f'Parton-Jet pairs: {len(partonToJets)}')
+    # Sort entries for each parton label by the cost
     for partonLabel in partonToJets:
-        print(partonLabel, ":", partonToJets[partonLabel], '-', len(partonToJets[partonLabel]))
-    print(f'Jet-Parton pairs: {len(jetToPartons)}')
-    for jetLabel in jetToPartons:
-        print(jetLabel, ":", jetToPartons[jetLabel], '-', len(jetToPartons[jetLabel]))
-    print(f'Number of definitive matches: {min( len(partonToJets), len(jetToPartons) )}')
-    
-    print('Topology: ')
-    print(partonLVs['t1/type'],partonLVs['t2/type'], partonLVs['t3/type'], partonLVs['t4/type'])
+        if len(partonToJets[partonLabel]) > 1 :
+            partonToJets[partonLabel] = sorted(partonToJets[partonLabel], key=lambda x: costMatrix[partonLabel][x])
+            # print('Sorted \'ere')
 
+    # Sort entries for each jet by the cost
+    for jetLabel in jetToPartons:
+        if len(jetToPartons[jetLabel]) > 1:
+            jetToPartons[jetLabel] = sorted(jetToPartons[jetLabel], key=lambda x: costMatrix[x][jetLabel])
+            # print('Sorted \'ere')
+
+    printPartonJetMatches(costMatrix, partonToJets, jetToPartons)
     
     usedJets = []
-    print('truth_allHad:', nominal.truth_allHad)
-    print(nominal.truthTop_isLepDecay)
-
     # Filling the result dictionary with the definitive matches (1 jet - 1 parton correspondence as weel as missing jets)
     for partonLabel in costMatrix:
         if len(costMatrix[partonLabel])==0:
             result[partonLabel] = -1
             continue
         
-        if len(partonToJets[partonLabel]) == 1 and partonToJets[partonLabel][0] not in usedJets and jetToPartons[partonToJets[partonLabel][0]]:
+        if len(partonToJets[partonLabel]) == 1 and partonToJets[partonLabel][0] not in usedJets and len(jetToPartons[partonToJets[partonLabel][0]]) == 1:
             result[partonLabel] = partonToJets[partonLabel][0]
             usedJets.append(result[partonLabel])
-    # return result
-    # for partonLabel in costMatrix:
-    #     if partonLabel in result: continue
-    #     if len(partonToJets[partonLabel]) > 1 and partonLabel not in  result:
-    #         for jetLabel in partonToJets[partonLabel]:
-    #             if jetLabel not in usedJets:
-    #                 result[partonLabel] = jetLabel
-    #                 usedJets.append(jetLabel)
-    #                 print('Happend \'ere!')
-    #                 break
-    #     if partonLabel not in result:
-    #         result[partonLabel] = -1 
+    for partonLabel in costMatrix:
+        if partonLabel in partonToJets and len(partonToJets[partonLabel]) > 0:
+            for jetLabel in partonToJets[partonLabel]:
+                if jetLabel not in usedJets:
+                    result[partonLabel] = jetLabel
+                    usedJets.append(jetLabel)
+                    break
+    
+    # Matches are found
     
 
     numberAssigned = 0
@@ -620,14 +646,13 @@ def findPartonJetPairs(nominal, args) -> dict:
         if result[partonLabel] != -1:
             numberAssigned += 1
     
-    printMassInfo(partonLVs, jetLVs, result, args)
-    print(result)
+    # printMassInfo(partonLVs, jetLVs, result, args)
     # print(getTrue_N_DetectedMasses(partonLVs, jetLVs, result, args))
 
-    if numberAssigned != min(len(partonToJets), len(jetToPartons)):
-        print(f'Missing one pair till best: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
-    if abs(numberAssigned - min(len(partonToJets), len(jetToPartons))) > 1 :
-        print(f'MISSING MORE THAN ONE! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
+    # if numberAssigned != min(len(partonToJets), len(jetToPartons)):
+    #     print(f'Missing one pair till best: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
+    # if abs(numberAssigned - min(len(partonToJets), len(jetToPartons))) > 1 :
+    #     print(f'MISSING MORE THAN ONE! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
     return result
 
 
