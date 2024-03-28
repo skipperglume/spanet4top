@@ -108,16 +108,24 @@ def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> b
 
     # args.reconstruction
 
-    groupedNames = {}
-    for group in args.reconstruction.split('|'):
-        subgroups = group.split('(')
-        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
+    groupedNames = getParticlesGroupName(args.reconstruction)
     for particle in groupedNames:
         if all([ assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]):
             return False
         if sum([assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]) > 1:
             return False
     return True
+
+def getParticlesGroupName(reconstructionTargets) -> dict :
+    '''
+    This method returns a dictionary of particle groups and their corresponding partons.
+    E.g 't1(b,q1,q2)|t2(b,q1,q2)' -> {'t1': ['b', 'q1', 'q2'], 't2': ['b', 'q1', 'q2']}
+    '''
+    groupedNames = {}
+    for group in reconstructionTargets.split('|'):
+        subgroups = group.split('(')
+        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')                
+    return groupedNames
 
 def source(root_files : list, args: argparse.Namespace):
         """
@@ -240,6 +248,14 @@ def source(root_files : list, args: argparse.Namespace):
                 # print(assignmentDict)
                 if not goodEvent(nominal, args): continue
                 assignmentDict = assignIndicesljetsttbar(nominal, args)
+                assignment, quality = findPartonJetPairs(nominal, args)
+                
+                for group in getParticlesGroupName(args.reconstruction):
+                    for parton in getParticlesGroupName(args.reconstruction)[group]:
+                        oldMatch = assignmentDict[group+'/'+parton] if group+'/'+parton in assignmentDict else 'N'
+                        newMatch = assignment[group+'/'+parton] if group+'/'+parton in assignment else 'N'
+                        print(group+'/'+parton+":", oldMatch, '|', newMatch)
+                
                 goodAssignment(nominal, assignmentDict, args)
                 
                 # TODO: check variable - truthTop_isHadTauDecay
@@ -357,8 +373,6 @@ def source(root_files : list, args: argparse.Namespace):
             write( out, args.topo, featuresToSave, indices, inputDict, decayDict )
                      
 
-
-
 def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, inputDict, decayDict : dict):
     """
         Function to create and write to the HDF5 file
@@ -393,16 +407,8 @@ def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, i
 
     HDF5.close()
 def targetsAreUnique(targets : list) -> bool:
-    for i in targets: 
-        if targets.count(i) > 1 and i != -1:
-            # mem = []
-            # for valIndex in range(len(targets)): 
-                            # if targets[valIndex] == i:
-                                   # mem.append(valIndex)
-                                   # print(f'Index: {valIndex} Value: {i}')
-                     # if len( set([_//3 for _ in mem]) )!= 1:
-                            # print('Incorect:',mem)
-                            # print(targets)
+    for target in targets: 
+        if target != -1 and targets.count(target) > 1:
             return False
     return True
 
@@ -503,16 +509,11 @@ def printPartonJetMatches(costMatrix : dict, partonToJets : dict, jetToPartons :
     print(f'Jet-Parton pairs: {len(jetToPartons)}')
     for jetLabel in jetToPartons:
         print(jetLabel, ":", jetToPartons[jetLabel], '-', len(jetToPartons[jetLabel]))
-    print(f'Number of definitive matches: {min( len(partonToJets), len(jetToPartons) )}')
 
 def getPartonLVs(nominal, args : argparse.Namespace) -> dict:
     partonLVs = {}    
-    groupedNames = {}
-    for group in args.reconstruction.split('|'):
-        subgroups = group.split('(')
-        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
+    groupedNames = getParticlesGroupName(args.reconstruction)
     
-    # print(groupedNames)
     # print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
         
     for particle in groupedNames.keys():
@@ -574,6 +575,68 @@ def getPairWiseDicts(costMatrix : dict) -> list:
                 jetToPartons[jetLabel].append(partonLabel)
     return (partonToJets, jetToPartons)
 
+def getParticleLVs(nominal, args : argparse.Namespace) -> dict:
+    particleLVs = {}
+    for group in args.reconstruction.split('|'):
+        subgroups = group.split('(')
+        particleName = subgroups[0]
+        particleLVs[particleName] = ROOT.TLorentzVector()
+        particleLVs[particleName].SetPtEtaPhiE(nominal.truthTop_pt[int(particleName[1:])-1], nominal.truthTop_eta[int(particleName[1:])-1], nominal.truthTop_phi[int(particleName[1:])-1], nominal.truthTop_e[int(particleName[1:])-1])
+    return particleLVs
+
+def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
+    wellness = {}
+    # Number of jets that were matched to partons
+    numberAssigned = 0
+    for partonLabel in assignmentDict:
+        if assignmentDict[partonLabel] != -1:
+            numberAssigned += 1
+    wellness['nAssigned'] = numberAssigned
+    
+    # Flag that all jets are unique
+    wellness['unique'] = targetsAreUnique([assignmentDict[partonLabel] for partonLabel in assignmentDict])
+
+    # Number of completly matched particles
+    # i.e. particles for which all partons are matched to jets
+    numberComplete = 0
+    print(assignmentDict)
+    for group in args.reconstruction.split('|'):
+        subgroups = group.split('(')
+        particleName = subgroups[0]
+        partons = subgroups[1][:-1].split(',')
+        if all([assignmentDict[particleName+'/'+parton] != -1 for parton in partons]):
+            numberComplete += 1
+    wellness['nCompleteMatch'] = numberComplete
+    # TODO: add further flags on quality of mathces 
+    # And kinematic quatlity information
+    # Such as masses and DR between particles and matched jets as a basis for comparison
+    particleLVs = getParticleLVs(nominal, args)
+    particleMatchedLVs = {}
+    # Print masses:
+    for particle in particleLVs:
+        # print(f'Truth {particle} : {particleLVs[particle].M()*0.001}')
+        for parton in assignmentDict:
+            if particle in parton and assignmentDict[parton] != -1 and parton in partonLVs :
+                if particle not in particleMatchedLVs:
+                    particleMatchedLVs[particle] = ROOT.TLorentzVector(partonLVs[parton])
+                else:
+                    particleMatchedLVs[particle] += partonLVs[parton]
+        if particle in particleMatchedLVs:
+            matchedMass = particleMatchedLVs[particle].M()*0.001
+            deltaR = particleLVs[particle].DeltaR(particleMatchedLVs[particle])
+            PtRatio = particleMatchedLVs[particle].Pt()/particleLVs[particle].Pt()
+        else:
+            matchedMass = -1
+            deltaR = -1
+            PtRatio = -1
+        print(f'Match {particle} : {matchedMass} - {deltaR} - {PtRatio}') 
+        wellness[f'{particle}_TruthMass'] = particleLVs[particle].M()*0.001
+        wellness[f'{particle}_MatchMass'] = matchedMass
+        wellness[f'{particle}_DeltaR'] = deltaR
+        wellness[f'{particle}_PtRatio'] = PtRatio
+
+    return wellness
+
 def findPartonJetPairs(nominal, args) -> dict:
     '''
     Method to find pairings between parton with detected jets. 
@@ -583,12 +646,8 @@ def findPartonJetPairs(nominal, args) -> dict:
     These indices must also be strictly unique. 
     Any targets which are missing within an event should be marked with -1.
     '''
-    # ['truthTop_pt', 'truthTop_eta', 'truthTop_phi', 'truthTop_e']
-    # ['truthTop_b_pt', 'truthTop_b_eta', 'truthTop_b_phi', 'truthTop_b_e'] 
     # ['truthTop_W_pt', 'truthTop_W_eta', 'truthTop_W_phi', 'truthTop_W_e']
-    # ['truthTop_W_child1_pt', 'truthTop_W_child1_eta', 'truthTop_W_child1_phi', 'truthTop_W_child1_e']
     # 'truthTop_W_child1_pdgId'
-    # ['truthTop_W_child2_pt', 'truthTop_W_child2_eta', 'truthTop_W_child2_phi', 'truthTop_W_child2_e']
     # 'truthTop_W_child2_pdgId'
     # ['truthTop_truthJet_pt', 'truthTop_truthJet_eta', 'truthTop_truthJet_phi', 'truthTop_truthJet_e']
     # 'truthTop_truthJet_index' 'truthTop_truthJet_flavor',  
@@ -617,8 +676,8 @@ def findPartonJetPairs(nominal, args) -> dict:
         if len(jetToPartons[jetLabel]) > 1:
             jetToPartons[jetLabel] = sorted(jetToPartons[jetLabel], key=lambda x: costMatrix[x][jetLabel])
             # print('Sorted \'ere')
-
-    printPartonJetMatches(costMatrix, partonToJets, jetToPartons)
+    if not True:
+        printPartonJetMatches(costMatrix, partonToJets, jetToPartons)
     
     usedJets = []
     # Filling the result dictionary with the definitive matches (1 jet - 1 parton correspondence as weel as missing jets)
@@ -630,6 +689,7 @@ def findPartonJetPairs(nominal, args) -> dict:
         if len(partonToJets[partonLabel]) == 1 and partonToJets[partonLabel][0] not in usedJets and len(jetToPartons[partonToJets[partonLabel][0]]) == 1:
             result[partonLabel] = partonToJets[partonLabel][0]
             usedJets.append(result[partonLabel])
+
     for partonLabel in costMatrix:
         if partonLabel in partonToJets and len(partonToJets[partonLabel]) > 0:
             for jetLabel in partonToJets[partonLabel]:
@@ -637,34 +697,29 @@ def findPartonJetPairs(nominal, args) -> dict:
                     result[partonLabel] = jetLabel
                     usedJets.append(jetLabel)
                     break
+            
+        if partonLabel not in result:
+            result[partonLabel] = -1
     
-    # Matches are found
+    wellness = evaluateAssignmentQuality(nominal, partonLVs, jetLVs, result, args)
     
+    if not True:
+        print('Wellness:', wellness)
+        printMassInfo(partonLVs, jetLVs, result, args)
 
-    numberAssigned = 0
-    for partonLabel in result:
-        if result[partonLabel] != -1:
-            numberAssigned += 1
-    
-    # printMassInfo(partonLVs, jetLVs, result, args)
     # print(getTrue_N_DetectedMasses(partonLVs, jetLVs, result, args))
 
     # if numberAssigned != min(len(partonToJets), len(jetToPartons)):
     #     print(f'Missing one pair till best: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
     # if abs(numberAssigned - min(len(partonToJets), len(jetToPartons))) > 1 :
     #     print(f'MISSING MORE THAN ONE! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
-    return result
-
-
+    return result, wellness
 
 def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     """
-    Here is where you need to do the truth matching
+    This funciton returns the indices of the partons and jets in the SPA-Net format
     """
-    groupedNames = {}
-    for group in args.reconstruction.split('|'):
-        subgroups = group.split('(')
-        groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')
+    groupedNames = getParticlesGroupName(args.reconstruction)
     result = {}
     for group in groupedNames:
         for parton in groupedNames[group]:
@@ -684,16 +739,8 @@ def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
             # print(spaNetParton, rootParton)
             result[spaNetParton] = getattr(nominal, rootParton)
     
-
-    newAss = findPartonJetPairs(nominal, args)
     print('Old | New Assignments:')
     
-    for group in groupedNames:
-        for parton in groupedNames[group]:
-            oldMatch = result[group+'/'+parton] if group+'/'+parton in result else '-1'
-            newMatch = newAss[group+'/'+parton] if group+'/'+parton in newAss else '-1'
-            print(group+'/'+parton+":", oldMatch, '|', newMatch)
-    print(result)
     return result
 
         
