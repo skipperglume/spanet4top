@@ -10,24 +10,25 @@ import re
 from tqdm import tqdm
 import pickle
 import datetime
+from sharedMethods import *
 
 # TODO: implement Py Parsing
 # import pyparsing
 
 def eTOm(feats):
-       """
-       Find jet masses by using TLorentzVector().SetPtEtaPhiE(pt, eta, phi, e), 
-       where e = nominal.jet_e since there is no jet_m, then finding the
-       mass of the LorentzVector with the M() method.
-       """
-       # Creating TLorentzVectors for each jet
-       vects = [ROOT.TLorentzVector() for i in feats[0]]
-       # SetPtEtaPhiE for each jet
-       for i in range(len(feats[0])):
-              vects[i].SetPtEtaPhiE(feats[0][i], feats[1][i], feats[2][i], feats[3][i])
-       # Using .M() method on each jet to get jet masses
-       m_ls = [j.M() for j in vects]
-       return m_ls
+    """
+    Find jet masses by using TLorentzVector().SetPtEtaPhiE(pt, eta, phi, e), 
+    where e = nominal.jet_e since there is no jet_m, then finding the
+    mass of the LorentzVector with the M() method.
+    """
+    # Creating TLorentzVectors for each jet
+    vects = [ROOT.TLorentzVector() for i in feats[0]]
+    # SetPtEtaPhiE for each jet
+    for i in range(len(feats[0])):
+            vects[i].SetPtEtaPhiE(feats[0][i], feats[1][i], feats[2][i], feats[3][i])
+    # Using .M() method on each jet to get jet masses
+    m_ls = [j.M() for j in vects]
+    return m_ls
 
 def get_max_jets(root_files, treename='nominal', topo='ttbar'):
     """
@@ -83,6 +84,7 @@ def goodEvent( tree, args : argparse.Namespace) -> bool:
     # Check that the event is all hadronic:
     isNotAllHad = 1 if sum([float(x.encode("utf-8").hex()) for x in list(tree.truthTop_isLepDecay)]) > 0 else 0
     if isNotAllHad: return False
+    if len(list(tree.truthTop_isLepDecay)) != 4 : return False
     # print('Is Not All Hadronic:', isNotAllHad)
     
     return True
@@ -244,13 +246,15 @@ def source(root_files : list, args: argparse.Namespace):
             # Counters to display need info about our samples
             all_had_count = 0
             non_all_had_count = 0
-            for i in tqdm(range(eventNumber)):
+            eventRange = range(0, eventNumber)
+            if args.test: eventRange = range(3550000+ 28000, eventNumber)
+            for i in tqdm(eventRange):
                 # Early stopping for testing
-                if args.test and i > 300 : break
+                if args.test and i-eventRange[0] > 50000 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
-                    print('Currently collected events: ',len(inputDict['AUX/aux/eventNumber']), len(inputDict['AUX/aux/eventNumber'])/i)
+                    print('Currently collected events: ',len(inputDict['AUX/aux/eventNumber']), '-', len(inputDict['AUX/aux/eventNumber'])/(i+1))
                 nominal.GetEntry(i)
                 # Now do the particle groups, ie the truth targets
                 # One could apply cuts here if desired, but usually inclusive training is best!
@@ -430,10 +434,8 @@ def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, i
 
     #INPUTS group
     # inputsGroup = HDF5.create_group('INPUTS')
-
     # sourceGroup = inputsGroup.create_group('Source')
     # jet_mask_set = sourceGroup.create_dataset('MASK', data=np.array(jet_mask_list, dtype='bool')[indices])
-       
     # jet_mass_set = jet_group.create_dataset('mass', data=np.array(jet_mass_list, dtype=np.float32)[indices])
 
     HDF5.close()
@@ -444,6 +446,7 @@ def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
     '''
     # Get Date and Time in format: dd-mm-yyyy
     dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
+    if args.test : dateTimeVal += '_test'
     pickle.dump(histoDict, open(f'plots/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl', 'wb'))
     for histo in histoDict:
         c = ROOT.TCanvas()
@@ -562,6 +565,7 @@ def getPartonLVs(nominal, args : argparse.Namespace) -> dict:
         
     for particle in groupedNames.keys():
         topIter = int(particle[1:])-1
+        
         partonLVs[f'{particle}/type'] = int(nominal.truthTop_isLepDecay[topIter].encode("utf-8").hex())
         
         for parton in groupedNames[particle]:
@@ -786,20 +790,6 @@ def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     
     return result
 
-        
-def displayFoundFiles(fPaths : list):
-        numFile = len(fPaths)
-        print('==============================================================')
-        print(f'Found {numFile} files:')
-        print('==============================================================')
-        for i in range(numFile):
-            name = os.path.basename(fPaths[i])
-            if name == '':
-                print(f'ERROR: {fPaths[i]} is a directory')
-                exit(1)
-            else:
-                print(name)
-
 if __name__ == "__main__":
        
     file_paths = []
@@ -815,7 +805,7 @@ if __name__ == "__main__":
     parser.add_argument('--oddeven', action='store_false' , help='Split into odd and even events')
     parser.add_argument('--test', action='store_true', help='Test the code')
     parser.add_argument('--ignoreDecay', action='store_true', help='Ignore the decay type of tops')
-    parser.add_argument('-p','--prefix',default='year17_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files Via looking which exacylt to use')
+    parser.add_argument('-p','--prefix',default='year18_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files Via looking which exacylt to use')
     parser.add_argument('-s','--suffix',default='_tttt', choices=['_tttt',], help='Suffix to separate files')
     parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files')
     args = parser.parse_args()

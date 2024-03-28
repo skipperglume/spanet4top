@@ -11,6 +11,7 @@ from collections import defaultdict
 from itertools import groupby
 import glob
 import argparse
+from sharedMethods import *
 
 from h5Test import compactKeyDict, printCompactKeyDict, recursiveHDF5List
 class hdf5Structure:
@@ -108,18 +109,18 @@ if __name__ == '__main__':
 
     parser=argparse.ArgumentParser()
     # four_top_SPANET_input_even.h5
-    parser.add_argument('-i', '--inloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/', type=str, help='Input file location')
-    parser.add_argument('-o', '--outloc' , default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/output1.h5', type=str, help='Output location')
-    parser.add_argument('-t', '--test', action='store_true', help='Test the code')
-    parser.add_argument('-m', '--mode', default='even', type=str, help='Mode e.g. even or odd')
+    parser.add_argument('-i', '--inloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/backup/', type=str, help='Input file location')
+    parser.add_argument('-o', '--outloc' , default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/spanet.h5', type=str, help='Output location')
+    parser.add_argument('--test', action='store_true', help='Test the code')
+    parser.add_argument('-m', '--mode', default='even', choices=['even', 'odd', ''], type=str, help='Mode e.g. even or odd')
+    parser.add_argument('-t', '--topo', default='tttt', choices=['tttt'], type=str, help='Mode e.g. even or odd')
 
     args = parser.parse_args()
 
     input_path = args.inloc
-    mode = args.mode
-    filenames_odd = glob.glob(os.path.join(input_path,f'*{mode}.h5'))
-    print(filenames_odd)
-    
+    filenames_odd = glob.glob(os.path.join(input_path,f'*{args.topo}*{args.mode}.h5'))
+    displayFoundFiles(filenames_odd)
+
     file = h5.File(filenames_odd[0], 'r')
     
     struct = hdf5Structure('default')
@@ -146,10 +147,17 @@ if __name__ == '__main__':
             print(f'Branch {branch} removed from the list of branches')
     print('Branches in the file:', branchesList)
     
-    
+    # Preparing the output file name:
+    folder, basename = os.path.split(args.outloc)
+    basename = basename.split('.')
+    basename[0] = basename[0] + f'_{args.topo}_{args.mode}'
+    args.outloc = os.path.join(folder, '.'.join(basename))
+    print(f'Output file: {args.outloc}')
     # Cleaning old output file
     if os.path.exists(args.outloc):
         os.system(f'rm -f {args.outloc}')
+    if args.test : 
+        exit(0)
     with h5.File(args.outloc, "w") as outputDataFile:
         for branch in branchesList:
             create_for_append(outputDataFile, branch, file[branch])

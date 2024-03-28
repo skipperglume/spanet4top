@@ -5,14 +5,6 @@ import numpy as np
 filename = "/home/timoshyd/spanet4Top/SPANet/data/full_hadronic_ttbar/example.h5"
 filename = "/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input_even.h5"
 
-
-parser=argparse.ArgumentParser()
-parser.add_argument('-fn','--filename', default='four_top_SPANET_input/four_top_SPANET_input_even.h5', type=str, help='Input file location')
-parser.add_argument('-n','--nPoints', default=1, type=int, help='Number of Data points to diplay')
-parser.add_argument('-s', '--shift' , default=0, type=int, help='Shift the data points to display')
-parser.add_argument('-v', '--verbose' , action='store_true', help='Verbose output: prints more info')
-args = parser.parse_args()
-
 def recursiveHDF5List(currentContainer, spaceVal=0):
     for key in currentContainer.keys():
         print(' '*spaceVal, key)
@@ -54,7 +46,15 @@ def printCompactKeyDict(key_dict, spaceVal=0, verbose=False):
                 print((spaceVal+1)*'\t',key_dict[key][0],sep='')
             else:
                 print((spaceVal+1)*'\t',key_dict[key][1],sep='')
+
+
 if __name__ == "__main__":
+    parser=argparse.ArgumentParser()
+    parser.add_argument('-fn','--filename', default='four_top_SPANET_input/four_top_SPANET_input_even.h5', type=str, help='Input file location')
+    parser.add_argument('-n','--nPoints', default=1, type=int, help='Number of Data points to diplay')
+    parser.add_argument('-s', '--shift' , default=0, type=int, help='Shift the data points to display')
+    parser.add_argument('-v', '--verbose' , action='store_true', help='Verbose output: prints more info')
+    args = parser.parse_args()
     args = parser.parse_args()
     # Check if file exists
     if not os.path.exists(args.filename):
