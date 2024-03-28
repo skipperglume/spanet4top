@@ -8,6 +8,8 @@ import sys, os
 import glob
 import re
 from tqdm import tqdm
+import pickle
+import datetime
 
 # TODO: implement Py Parsing
 # import pyparsing
@@ -81,11 +83,11 @@ def goodEvent( tree, args : argparse.Namespace) -> bool:
     # Check that the event is all hadronic:
     isNotAllHad = 1 if sum([float(x.encode("utf-8").hex()) for x in list(tree.truthTop_isLepDecay)]) > 0 else 0
     if isNotAllHad: return False
-    print('Is Not All Hadronic:', isNotAllHad)
+    # print('Is Not All Hadronic:', isNotAllHad)
     
     return True
 def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> bool:
-
+    # Check that jet indices are above value of maximum number of jets
     for jetParton in assignmentDict:
         if assignmentDict[jetParton] >= args.maxjets:
             return False
@@ -101,19 +103,17 @@ def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> b
                 indexDict[assignmentDict[jetParton]] += 1
     # Check uniqueness of the assignments. Same jet should not correspond to different partons
     if len(uniqueSet) != len(notUnique):
-        # print('Not unique:  ', sorted(notUnique))
-        # print('Unique:      ',uniqueSet)
-        # print(indexDict)
         return False
 
     # args.reconstruction
 
     groupedNames = getParticlesGroupName(args.reconstruction)
     for particle in groupedNames:
+        # Check that each particle has at least one jet assigned
         if all([ assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]):
             return False
-        if sum([assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]) > 1:
-            return False
+        # if sum([assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]) > 1:
+            # return False
     return True
 
 def getParticlesGroupName(reconstructionTargets) -> dict :
@@ -214,6 +214,15 @@ def source(root_files : list, args: argparse.Namespace):
         # TODO: fix this part for more events
         # SPANet requires all particles to decay to at least two, to introduce a single jet, you add an empty particle
        
+        # Set histograms
+        histoDict = {}
+        histoDict['MatchedMass'] = ROOT.TH1F('MatchedMass', 'MatchedMass', 100, 0, 500)
+        histoDict['TruthMass'] = ROOT.TH1F('TruthMass', 'TruthMass', 100, 0, 500)
+        histoDict['DeltaR'] = ROOT.TH1F('DeltaR', 'DeltaR', 100, -1, 4)
+        histoDict['PtRatio'] = ROOT.TH1F('PtRatio', 'PtRatio', 100, -1, 4)
+
+        for histo in histoDict:
+            histoDict[histo].Sumw2()
 
         nfiles=len(root_files)
         # Iterating over files to extract data, organize it, and add it to HDF5 file
@@ -237,27 +246,48 @@ def source(root_files : list, args: argparse.Namespace):
             non_all_had_count = 0
             for i in tqdm(range(eventNumber)):
                 # Early stopping for testing
-                if args.test and i > 3000 : break
+                if args.test and i > 300 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
-                    print('Currently collected events: ',len(inputDict['AUX/aux/eventNumber']))
+                    print('Currently collected events: ',len(inputDict['AUX/aux/eventNumber']), len(inputDict['AUX/aux/eventNumber'])/i)
                 nominal.GetEntry(i)
                 # Now do the particle groups, ie the truth targets
                 # One could apply cuts here if desired, but usually inclusive training is best!
                 # print(assignmentDict)
                 if not goodEvent(nominal, args): continue
+                
+                # Old parton jets assignment. Done in RAC. Has problems: no protection against repetitions
                 assignmentDict = assignIndicesljetsttbar(nominal, args)
+                
+                # New parton jets assignment. Done in RAC. Has problems: no protection against repetitions
                 assignment, quality = findPartonJetPairs(nominal, args)
+
+                # Here we set which assignment to use
+                assignmentDict = assignment
+                # Quality keys:
+                # 'nAssigned', 'unique', 'nCompleteMatch', 
+                # 't@_TruthMass', 't@_MatchMass', 't@_DeltaR', 't@_PtRatio'
+
+                if not True:
+                    print('Old | New Assignments:')
+                    for group in getParticlesGroupName(args.reconstruction):
+                        for parton in getParticlesGroupName(args.reconstruction)[group]:
+                            oldMatch = assignmentDict[group+'/'+parton] if group+'/'+parton in assignmentDict else 'N'
+                            newMatch = assignment[group+'/'+parton] if group+'/'+parton in assignment else 'N'
+                            print(group+'/'+parton+":", oldMatch, '|', newMatch)
+                
+                if not goodAssignment(nominal, assignmentDict, args): 
+                    # print(assignmentDict)
+                    continue
                 
                 for group in getParticlesGroupName(args.reconstruction):
-                    for parton in getParticlesGroupName(args.reconstruction)[group]:
-                        oldMatch = assignmentDict[group+'/'+parton] if group+'/'+parton in assignmentDict else 'N'
-                        newMatch = assignment[group+'/'+parton] if group+'/'+parton in assignment else 'N'
-                        print(group+'/'+parton+":", oldMatch, '|', newMatch)
-                
-                goodAssignment(nominal, assignmentDict, args)
-                
+
+                    histoDict['MatchedMass'].Fill( quality[f'{group}_MatchMass']  , nominal.weight_final)
+                    histoDict['TruthMass'].Fill( quality[f'{group}_TruthMass']  , nominal.weight_final)
+                    histoDict['DeltaR'].Fill( quality[f'{group}_DeltaR']  , nominal.weight_final)
+                    histoDict['PtRatio'].Fill( quality[f'{group}_PtRatio']  , nominal.weight_final)
+
                 # TODO: check variable - truthTop_isHadTauDecay
                 isLepDecay = [ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)]
                 if sum(isLepDecay) > 0:
@@ -336,9 +366,11 @@ def source(root_files : list, args: argparse.Namespace):
 
             # Close ROOT files
             f.Close()
-        print('Number of All hadronic:', all_had_count)
-        print('Number of Non All hadronic:', non_all_had_count)
-              
+        collectedEvents = len(inputDict['AUX/aux/eventNumber'])
+        print('Collected events: ', collectedEvents)
+        print('Number of All hadronic:', all_had_count, all_had_count/collectedEvents )
+        print('Number of Non All hadronic:', non_all_had_count, non_all_had_count/collectedEvents)
+        
         outfiles = []
         modulusList = []
         remainderList = []
@@ -371,7 +403,8 @@ def source(root_files : list, args: argparse.Namespace):
                 decayDict['onePlusSemi'] = onePlusSemi_indices
                 
             write( out, args.topo, featuresToSave, indices, inputDict, decayDict )
-                     
+        plotHistograms( histoDict, args)
+
 
 def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, inputDict, decayDict : dict):
     """
@@ -398,14 +431,25 @@ def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, i
     #INPUTS group
     # inputsGroup = HDF5.create_group('INPUTS')
 
-
     # sourceGroup = inputsGroup.create_group('Source')
     # jet_mask_set = sourceGroup.create_dataset('MASK', data=np.array(jet_mask_list, dtype='bool')[indices])
        
     # jet_mass_set = jet_group.create_dataset('mass', data=np.array(jet_mass_list, dtype=np.float32)[indices])
 
-
     HDF5.close()
+
+def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
+    '''
+    Save the histograms as pickle dump file and also as png files.
+    '''
+    # Get Date and Time in format: dd-mm-yyyy
+    dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
+    pickle.dump(histoDict, open(f'plots/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl', 'wb'))
+    for histo in histoDict:
+        c = ROOT.TCanvas()
+        histoDict[histo].Draw()
+        c.SaveAs(f'plots/{histo}.png')
+
 def targetsAreUnique(targets : list) -> bool:
     for target in targets: 
         if target != -1 and targets.count(target) > 1:
@@ -599,7 +643,6 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
     # Number of completly matched particles
     # i.e. particles for which all partons are matched to jets
     numberComplete = 0
-    print(assignmentDict)
     for group in args.reconstruction.split('|'):
         subgroups = group.split('(')
         particleName = subgroups[0]
@@ -629,7 +672,7 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
             matchedMass = -1
             deltaR = -1
             PtRatio = -1
-        print(f'Match {particle} : {matchedMass} - {deltaR} - {PtRatio}') 
+        # print(f'Match {particle} : {matchedMass} - {deltaR} - {PtRatio}') 
         wellness[f'{particle}_TruthMass'] = particleLVs[particle].M()*0.001
         wellness[f'{particle}_MatchMass'] = matchedMass
         wellness[f'{particle}_DeltaR'] = deltaR
@@ -637,7 +680,7 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
 
     return wellness
 
-def findPartonJetPairs(nominal, args) -> dict:
+def findPartonJetPairs(nominal, args) -> tuple:
     '''
     Method to find pairings between parton with detected jets. 
     The assignment target arrays contain the indices of each assignment. 
@@ -657,7 +700,9 @@ def findPartonJetPairs(nominal, args) -> dict:
     # Parton and jet Lorentz Vectors Dictionary {Name : LV}
     partonLVs = getPartonLVs(nominal, args)
     jetLVs = getJetLVs(nominal, args)
-    print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
+
+    # print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
+
     # print('Targets to Reconstruct:', args.reconstruction.split('|'))
     
     
@@ -713,7 +758,7 @@ def findPartonJetPairs(nominal, args) -> dict:
     #     print(f'Missing one pair till best: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
     # if abs(numberAssigned - min(len(partonToJets), len(jetToPartons))) > 1 :
     #     print(f'MISSING MORE THAN ONE! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
-    return result, wellness
+    return (result, wellness)
 
 def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     """
@@ -738,8 +783,6 @@ def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
             rootParton = f't{topIter}_{parton}_Jeti'
             # print(spaNetParton, rootParton)
             result[spaNetParton] = getattr(nominal, rootParton)
-    
-    print('Old | New Assignments:')
     
     return result
 
@@ -772,7 +815,7 @@ if __name__ == "__main__":
     parser.add_argument('--oddeven', action='store_false' , help='Split into odd and even events')
     parser.add_argument('--test', action='store_true', help='Test the code')
     parser.add_argument('--ignoreDecay', action='store_true', help='Ignore the decay type of tops')
-    parser.add_argument('-p','--prefix',default='year17_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files')
+    parser.add_argument('-p','--prefix',default='year17_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files Via looking which exacylt to use')
     parser.add_argument('-s','--suffix',default='_tttt', choices=['_tttt',], help='Suffix to separate files')
     parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files')
     args = parser.parse_args()
