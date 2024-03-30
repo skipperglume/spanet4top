@@ -699,7 +699,7 @@ def findPartonJetPairs(nominal, args) -> tuple:
     # ['truthTop_truthJet_pt', 'truthTop_truthJet_eta', 'truthTop_truthJet_phi', 'truthTop_truthJet_e']
     # 'truthTop_truthJet_index' 'truthTop_truthJet_flavor',  
 
-    # This final matching between partons and jets
+    # This final matching between partons and jets in form of { parton : jet }
     result = {}
     # Parton and jet Lorentz Vectors Dictionary {Name : LV}
     partonLVs = getPartonLVs(nominal, args)
@@ -707,9 +707,7 @@ def findPartonJetPairs(nominal, args) -> tuple:
 
     # print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
 
-    # print('Targets to Reconstruct:', args.reconstruction.split('|'))
-    
-    
+    # Get the cost matrix for each parton-jet pair
     costMatrix = getCostMatrix(nominal, partonLVs, jetLVs, args)
 
     partonToJets , jetToPartons = getPairWiseDicts(costMatrix)
@@ -725,21 +723,27 @@ def findPartonJetPairs(nominal, args) -> tuple:
         if len(jetToPartons[jetLabel]) > 1:
             jetToPartons[jetLabel] = sorted(jetToPartons[jetLabel], key=lambda x: costMatrix[x][jetLabel])
             # print('Sorted \'ere')
+    
+    # Printing of the cost matrix and the parton-jet and jet-parton matches
     if not True:
         printPartonJetMatches(costMatrix, partonToJets, jetToPartons)
     
+    # List which keeps track of which jets have been used to prevent from using same jets
     usedJets = []
     # Filling the result dictionary with the definitive matches (1 jet - 1 parton correspondence as weel as missing jets)
     for partonLabel in costMatrix:
+        # If no jets are available for a parton, assign -1
         if len(costMatrix[partonLabel])==0:
             result[partonLabel] = -1
             continue
         
+        # If only one jet is available for a parton and it has not been used yet and the jet has only one parton, assign it
         if len(partonToJets[partonLabel]) == 1 and partonToJets[partonLabel][0] not in usedJets and len(jetToPartons[partonToJets[partonLabel][0]]) == 1:
             result[partonLabel] = partonToJets[partonLabel][0]
             usedJets.append(result[partonLabel])
 
     for partonLabel in costMatrix:
+        # Assign the first jet that has not been used yet to the parton
         if partonLabel in partonToJets and len(partonToJets[partonLabel]) > 0:
             for jetLabel in partonToJets[partonLabel]:
                 if jetLabel not in usedJets:
@@ -747,21 +751,17 @@ def findPartonJetPairs(nominal, args) -> tuple:
                     usedJets.append(jetLabel)
                     break
             
+        # If no jets are left for a parton, assign -1
         if partonLabel not in result:
             result[partonLabel] = -1
-    
+        
+    # Use this information for later quality control 
     wellness = evaluateAssignmentQuality(nominal, partonLVs, jetLVs, result, args)
     
     if not True:
         print('Wellness:', wellness)
         printMassInfo(partonLVs, jetLVs, result, args)
 
-    # print(getTrue_N_DetectedMasses(partonLVs, jetLVs, result, args))
-
-    # if numberAssigned != min(len(partonToJets), len(jetToPartons)):
-    #     print(f'Missing one pair till best: {numberAssigned} | {min(len(partonToJets), len(jetToPartons))}')
-    # if abs(numberAssigned - min(len(partonToJets), len(jetToPartons))) > 1 :
-    #     print(f'MISSING MORE THAN ONE! - {abs(numberAssigned - min(len(partonToJets), len(jetToPartons)))}')
     return (result, wellness)
 
 def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
