@@ -12,6 +12,9 @@ import pickle
 import datetime
 from sharedMethods import *
 
+from rich import pretty
+pretty.install()
+
 # TODO: implement Py Parsing
 # import pyparsing
 
@@ -74,24 +77,25 @@ def number_of_jets( topTargets : list ) -> int:
                      result += 1
        return result
 
-def goodEvent( tree, args : argparse.Namespace) -> bool:
-    
+def goodEvent( tree : ROOT.TTree, args : argparse.Namespace) -> bool:
+    result = True
+
+    # Selection on number of jets
     if not tree.n_jet >= 8: 
-        return False
-    
-    # if not tree.n_bjet >= 3:
-    #     return False
-
-    # if (number_of_jets([t1q1, t1q2, t1b] ) < 2 ) or (number_of_jets([t2q1, t2q2, t2b] ) < 2 ) or (number_of_jets([t3q1, t3q2, t3b] ) < 2 ) or (number_of_jets([t4q1, t4q2, t4b] ) < 2 ): 
-        # return False
-
+        result = False
+    # Selection on number of b-tagged jets
+    if not tree.n_bjet >= 1:
+        result = False
+    # Check that event indeed has 4 top quarks (happens that some events have 3)
+    if len(list(tree.truthTop_isLepDecay)) != 4 : 
+        result = False
     # Check that the event is all hadronic:
     isNotAllHad = 1 if sum([float(x.encode("utf-8").hex()) for x in list(tree.truthTop_isLepDecay)]) > 0 else 0
-    if isNotAllHad: return False
-    if len(list(tree.truthTop_isLepDecay)) != 4 : return False
+    if isNotAllHad: 
+        result = False
     # print('Is Not All Hadronic:', isNotAllHad)
     
-    return True
+    return result
 def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> bool:
     # Check that jet indices are above value of maximum number of jets
     for jetParton in assignmentDict:
@@ -171,7 +175,7 @@ def source(root_files : list, args: argparse.Namespace):
             'TARGETS/t4/q2',
         ]
 
-        # INPUTS for SPANet       
+        # INPUTS for SPANet
         # Jets
         # Features lists that will be appended to and will have dimensions (EVENTS, MAX_JETS)
         inputDict = {}
@@ -196,9 +200,14 @@ def source(root_files : list, args: argparse.Namespace):
         # Auxiliary variables for the output preparation
         inputDict['AUX/aux/eventNumber'] = []
         inputDict['AUX/aux/decayType'] = []
+
+        # These variables are needed to check the selection criteria
+        countDict = {}
+        countDict['passJetNumber'] = []
+        countDict['passDecayType'] = []
+        countDict['passAssignemntCheck'] = []
         # inputDict['AUX/aux/extrajet_list'] = []
         # inputDict['AUX/aux/empty_list'] = []
-
 
         # TARGETS
         # Instatiating jet and mask lists
@@ -228,6 +237,11 @@ def source(root_files : list, args: argparse.Namespace):
         histoDict['PtRatio'] = ROOT.TH1F('PtRatio', 'PtRatio', 100, -1, 4)
         histoDict['MatchedJetsMass'] = ROOT.TH1F('MatchedJetsMass', 'MatchedJetsMass', 100, 0, 500)
 
+        histoDict['topTruthRecoDeltaR'] = ROOT.TH1F('topTruthRecoDeltaR', 'topTruthRecoDeltaR', 100, -1, 4)
+        histoDict['topTruthRecoPtRatio'] = ROOT.TH1F('topTruthRecoPtRatio', 'topTruthRecoPtRatio', 100, -1, 4)
+        histoDict['partonRecoDeltaR'] = ROOT.TH1F('partonRecoDeltaR', 'partonRecoDeltaR', 100, -1, 4)
+        histoDict['partonRecoPtRatio'] = ROOT.TH1F('partonRecoPtRatio', 'partonRecoPtRatio', 100, -1, 4)
+
         for histo in histoDict:
             histoDict[histo].Sumw2()
 
@@ -255,7 +269,7 @@ def source(root_files : list, args: argparse.Namespace):
             # if args.test: eventRange = range(3550000+ 28000, eventNumber)
             for i in tqdm(eventRange):
                 # Early stopping for testing
-                if args.test and i-eventRange[0] > 50000 : break
+                if args.test and i-eventRange[0] > 5000 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
@@ -299,6 +313,10 @@ def source(root_files : list, args: argparse.Namespace):
                     histoDict['DeltaR'].Fill( quality[f'{group}_DeltaR']  , nominal.weight_final)
                     histoDict['PtRatio'].Fill( quality[f'{group}_PtRatio']  , nominal.weight_final)
                     histoDict['MatchedJetsMass'].Fill( quality[f'{group}_MatchedJetsMass']  , nominal.weight_final)
+                    histoDict['topTruthRecoDeltaR'].Fill( quality[f'{group}_truthRecoDeltaR']  , nominal.weight_final)
+                    histoDict['topTruthRecoPtRatio'].Fill( quality[f'{group}_truthRecoPtRatio']  , nominal.weight_final)
+                    histoDict['partonRecoDeltaR'].Fill( quality[f'{group}_partonRecoDeltaR']  , nominal.weight_final)
+                    histoDict['partonRecoPtRatio'].Fill( quality[f'{group}_partonRecoPtRatio']  , nominal.weight_final)
 
                 # TODO: check variable - truthTop_isHadTauDecay
                 isLepDecay = [ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)]
@@ -405,16 +423,7 @@ def source(root_files : list, args: argparse.Namespace):
             print(f'indices for {remainder} after division by {modulus}:', len(indices[0]))
             # Print out only elements that are in indices:
             print('eventNumber_list:',len(np.array(inputDict['AUX/aux/eventNumber'])[indices]))
-            decayDict = { }
-            if args.ignoreDecay:
-                ...
-            else:
-                allHad_indices = np.where(np.array(inputDict['AUX/aux/decayType']) == 0.0)
-                onePlusSemi_indices = np.where(np.array(inputDict['AUX/aux/decayType']) != 0)
-                decayDict['allHad'] = allHad_indices
-                decayDict['onePlusSemi'] = onePlusSemi_indices
-                
-            write( out, args.topo, featuresToSave, indices, inputDict, decayDict )
+            write( out, args.topo, featuresToSave, indices, inputDict, {} )
         plotHistograms( histoDict, args)
 
 
@@ -423,8 +432,6 @@ def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, i
         Function to create and write to the HDF5 file
     """
     # print('Indices Size: ',len(indices[0]))
-    # print('Mask Size: ',len(jet_mask_list),len(jet_mask_list[0]))
-    # print('Mass Size: ',len(jet_mass_list))
        
     HDF5 = h5py.File(outloc, 'w')
     for featureName in featuresToSave:
@@ -632,23 +639,45 @@ def getPairWiseDicts(costMatrix : dict) -> list:
     return (partonToJets, jetToPartons)
 
 def getParticleLVs(nominal, args : argparse.Namespace) -> dict:
+    '''
+    Returns the principal particles Lorentz Vectors (t1,t2,t3,t4) in form of:
+    {'t1' : ROOT.TLorentzVector,..}
+    '''
     particleLVs = {}
-    for group in args.reconstruction.split('|'):
-        subgroups = group.split('(')
-        particleName = subgroups[0]
-        particleLVs[particleName] = ROOT.TLorentzVector()
-        particleLVs[particleName].SetPtEtaPhiE(nominal.truthTop_pt[int(particleName[1:])-1], nominal.truthTop_eta[int(particleName[1:])-1], nominal.truthTop_phi[int(particleName[1:])-1], nominal.truthTop_e[int(particleName[1:])-1])
+    for particle in getParticlesGroupName(args.reconstruction):
+        particleLVs[particle] = ROOT.TLorentzVector()
+        particleIter = int(particle[1:])-1
+        particleLVs[particle].SetPtEtaPhiE(nominal.truthTop_pt[particleIter], nominal.truthTop_eta[particleIter], nominal.truthTop_phi[particleIter], nominal.truthTop_e[particleIter])
     return particleLVs
-
+def getParticleMatchedLVs( partonLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
+    '''
+    Returns the Lorentz vectors of the matched partons for each principal particles in form of:
+    {'t1' : ROOT.TLorentzVector,..}. If no parton is matched, the Lorentz vector is set to 0.
+    '''
+    result = {}
+    particleGroups = getParticlesGroupName(args.reconstruction)
+    for particle in particleGroups:
+        result[particle] = ROOT.TLorentzVector()
+        result[particle].SetPxPyPzE(0,0,0,0) # Empty vector
+        for parton in particleGroups[particle]:
+            partonName = particle+'/'+parton
+            if partonName in assignmentDict and assignmentDict[partonName] != -1:
+                result[particle] += partonLVs[partonName]
+    return result
+        
 def getLVofMatchedJets(jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
+    '''
+    Calculate the Lorentz vectors of the matched jets for each principal particles
+    '''
     result = {}
     particlePartons = getParticlesGroupName(args.reconstruction)
     for particle in particlePartons:
         result[particle] = ROOT.TLorentzVector()
         result[particle].SetPxPyPzE(0,0,0,0)
         for parton in particlePartons[particle]:
-            if particle+'/'+parton in assignmentDict and assignmentDict[particle+'/'+parton] != -1:
-                result[particle] += jetLVs[assignmentDict[particle+'/'+parton]]
+            partonName = particle+'/'+parton
+            if partonName in assignmentDict and assignmentDict[partonName] != -1:
+                result[particle] += jetLVs[assignmentDict[partonName]]
     return result
 
 def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
@@ -673,37 +702,49 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
         partons = particlePartons[particle]
         if all([assignmentDict[particle+'/'+parton] != -1 for parton in partons]):
             numberComplete += 1
-    
     wellness['nCompleteMatch'] = numberComplete
-    # TODO: add further flags on quality of mathces 
-    # And kinematic quatlity information
-    # Such as masses and DR between particles and matched jets as a basis for comparison
+
+    # Calculating the masses of the partons and the matched jets
+    # Delta R and ratio of transverse momentums
+
+    # Dictionary of Lontze Vectors for:
+    # - Target Particles (4top)
     particleLVs = getParticleLVs(nominal, args)
-    particleMatchedLVs = {}
+    # - Target Partons that have a matching jet
+    particleMatchedLVs = getParticleMatchedLVs( partonLVs, assignmentDict, args)
+    # - Matched Jet to partons
     lvOfMatchedJets = getLVofMatchedJets(jetLVs, assignmentDict, args)
-    # Print masses:
+    
     for particle in particleLVs:
-        # print(f'Truth {particle} : {particleLVs[particle].M()*0.001}')
-        for parton in assignmentDict:
-            if particle in parton and assignmentDict[parton] != -1 and parton in partonLVs :
-                if particle not in particleMatchedLVs:
-                    particleMatchedLVs[particle] = ROOT.TLorentzVector(partonLVs[parton])
-                else:
-                    particleMatchedLVs[particle] += partonLVs[parton]
-        if particle in particleMatchedLVs:
-            matchedMass = particleMatchedLVs[particle].M()*0.001
-            deltaR = particleLVs[particle].DeltaR(particleMatchedLVs[particle])
-            PtRatio = particleMatchedLVs[particle].Pt()/particleLVs[particle].Pt()
-        else:
-            matchedMass = -1
-            deltaR = -1
-            PtRatio = -1
-        # print(f'Match {particle} : {matchedMass} - {deltaR} - {PtRatio}') 
         wellness[f'{particle}_TruthMass'] = particleLVs[particle].M()*0.001
-        wellness[f'{particle}_MatchMass'] = matchedMass
-        wellness[f'{particle}_DeltaR'] = deltaR
-        wellness[f'{particle}_PtRatio'] = PtRatio
-        wellness[f'{particle}_MatchedJetsMass'] = lvOfMatchedJets[particle].M()*0.001 if particle in lvOfMatchedJets else -1
+        wellness[f'{particle}_MatchMass'] = particleMatchedLVs[particle].M()*0.001
+        wellness[f'{particle}_MatchedJetsMass'] = lvOfMatchedJets[particle].M()*0.001
+        
+        wellness[f'{particle}_DeltaR'] = particleLVs[particle].DeltaR(particleMatchedLVs[particle])
+        wellness[f'{particle}_PtRatio'] = particleMatchedLVs[particle].Pt()/particleLVs[particle].Pt()
+
+        wellness[f'{particle}_truthRecoDeltaR'] = particleLVs[particle].DeltaR(lvOfMatchedJets[particle])
+        wellness[f'{particle}_truthRecoPtRatio'] = lvOfMatchedJets[particle].Pt()/particleLVs[particle].Pt()
+
+        wellness[f'{particle}_partonRecoDeltaR'] = particleMatchedLVs[particle].DeltaR(lvOfMatchedJets[particle]) if particleMatchedLVs[particle].Pt() > 0 else -0.5
+        # particleMatchedLVs[particle].DeltaR(lvOfMatchedJets[particle]) if particle in lvOfMatchedJets else -1
+        wellness[f'{particle}_partonRecoPtRatio'] = lvOfMatchedJets[particle].Pt() / particleMatchedLVs[particle].Pt() if particleMatchedLVs[particle].Pt() > 0 else -0.5
+        # lvOfMatchedJets[particle].Pt()/particleMatchedLVs[particle].Pt() if particleMatchedLVs[particle].Pt() > 0 else -1
+
+        # wellness[f'{particle}_topTruthRecoDeltaR'] = lvOfMatchedJets[particle].M()*0.001 if particle in lvOfMatchedJets else -1
+    
+
+    # for particle in particlePartons:
+    #     print(particle, ':', end='')
+    #     print( getParticleMatchedLVs( partonLVs, assignmentDict, args)[particle].M()*0.001, ' / ', end=''  )
+    #     print( particleLVs[particle].M()*0.001, ' / ', end=''  )
+    #     print( lvOfMatchedJets[particle].M()*0.001, ' / ', end=''  )
+    #     if particle in particleMatchedLVs:
+    #         print( particle, ':', particleMatchedLVs[particle].M()*0.001, ' / ', end=''   )
+    #         if getParticleMatchedLVs( partonLVs, assignmentDict, args)[particle].M()*0.001 != particleMatchedLVs[particle].M()*0.001:
+    #             print('!+!+!+!+')
+
+    #     print()
     return wellness
 
 def findPartonJetPairs(nominal, args) -> tuple:
@@ -831,8 +872,9 @@ if __name__ == "__main__":
     parser.add_argument('-s','--suffix',default='_tttt', choices=['_tttt',], help='Suffix to separate files.')
     parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files.')
     parser.add_argument('--tag',default='_8JETS', help='Suffix to differentiate files.')
-    
+
     args = parser.parse_args()
+    args.particlesGroupName = getParticlesGroupName(args.reconstruction)
 
     if args.prefix != '':
         listNameParts = args.outloc.split('/')
@@ -900,5 +942,5 @@ if __name__ == "__main__":
     displayFoundFiles(file_paths)
     # Run production:
     source(file_paths, args)
-
+    print(args.particlesGroupName)
 
