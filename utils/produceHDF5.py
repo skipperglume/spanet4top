@@ -76,7 +76,11 @@ def number_of_jets( topTargets : list ) -> int:
 
 def goodEvent( tree, args : argparse.Namespace) -> bool:
     
-    if not tree.n_jet >= 8: return False
+    if not tree.n_jet >= 8: 
+        return False
+    
+    # if not tree.n_bjet >= 3:
+    #     return False
 
     # if (number_of_jets([t1q1, t1q2, t1b] ) < 2 ) or (number_of_jets([t2q1, t2q2, t2b] ) < 2 ) or (number_of_jets([t3q1, t3q2, t3b] ) < 2 ) or (number_of_jets([t4q1, t4q2, t4b] ) < 2 ): 
         # return False
@@ -140,19 +144,19 @@ def source(root_files : list, args: argparse.Namespace):
         # List of feature name to save:
         featuresToSave = [
             'INPUTS/Source/MASK',
-            'INPUTS/Source/pt_x',
-            'INPUTS/Source/pt_y',
-            # 'INPUTS/Source/pt',
+            # 'INPUTS/Source/pt_x',
+            # 'INPUTS/Source/pt_y',
+            'INPUTS/Source/pt',
             'INPUTS/Source/eta',
             'INPUTS/Source/e',
-            # 'INPUTS/Source/sin_phi',
-            # 'INPUTS/Source/cos_phi',
+            'INPUTS/Source/sin_phi',
+            'INPUTS/Source/cos_phi',
             'INPUTS/Source/btag',
-            # 'INPUTS/Met/met',
-            'INPUTS/Met/met_x',
-            'INPUTS/Met/met_y',
-            # 'INPUTS/Met/sin_phi',
-            # 'INPUTS/Met/cos_phi',
+            'INPUTS/Met/met',
+            # 'INPUTS/Met/met_x',
+            # 'INPUTS/Met/met_y',
+            'INPUTS/Met/sin_phi',
+            'INPUTS/Met/cos_phi',
             'TARGETS/t1/b',
             'TARGETS/t1/q1',
             'TARGETS/t1/q2',
@@ -222,6 +226,7 @@ def source(root_files : list, args: argparse.Namespace):
         histoDict['TruthMass'] = ROOT.TH1F('TruthMass', 'TruthMass', 100, 0, 500)
         histoDict['DeltaR'] = ROOT.TH1F('DeltaR', 'DeltaR', 100, -1, 4)
         histoDict['PtRatio'] = ROOT.TH1F('PtRatio', 'PtRatio', 100, -1, 4)
+        histoDict['MatchedJetsMass'] = ROOT.TH1F('MatchedJetsMass', 'MatchedJetsMass', 100, 0, 500)
 
         for histo in histoDict:
             histoDict[histo].Sumw2()
@@ -247,7 +252,7 @@ def source(root_files : list, args: argparse.Namespace):
             all_had_count = 0
             non_all_had_count = 0
             eventRange = range(0, eventNumber)
-            if args.test: eventRange = range(3550000+ 28000, eventNumber)
+            # if args.test: eventRange = range(3550000+ 28000, eventNumber)
             for i in tqdm(eventRange):
                 # Early stopping for testing
                 if args.test and i-eventRange[0] > 50000 : break
@@ -272,7 +277,9 @@ def source(root_files : list, args: argparse.Namespace):
                 # Quality keys:
                 # 'nAssigned', 'unique', 'nCompleteMatch', 
                 # 't@_TruthMass', 't@_MatchMass', 't@_DeltaR', 't@_PtRatio'
-
+                
+                # if quality['nCompleteMatch'] != 4 : continue
+                
                 if not True:
                     print('Old | New Assignments:')
                     for group in getParticlesGroupName(args.reconstruction):
@@ -291,6 +298,7 @@ def source(root_files : list, args: argparse.Namespace):
                     histoDict['TruthMass'].Fill( quality[f'{group}_TruthMass']  , nominal.weight_final)
                     histoDict['DeltaR'].Fill( quality[f'{group}_DeltaR']  , nominal.weight_final)
                     histoDict['PtRatio'].Fill( quality[f'{group}_PtRatio']  , nominal.weight_final)
+                    histoDict['MatchedJetsMass'].Fill( quality[f'{group}_MatchedJetsMass']  , nominal.weight_final)
 
                 # TODO: check variable - truthTop_isHadTauDecay
                 isLepDecay = [ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)]
@@ -447,7 +455,7 @@ def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
     # Get Date and Time in format: dd-mm-yyyy
     dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
     if args.test : dateTimeVal += '_test'
-    pickle.dump(histoDict, open(f'plots/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl', 'wb'))
+    pickle.dump(histoDict, open(f'pickles/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl', 'wb'))
     for histo in histoDict:
         c = ROOT.TCanvas()
         histoDict[histo].Draw()
@@ -632,6 +640,17 @@ def getParticleLVs(nominal, args : argparse.Namespace) -> dict:
         particleLVs[particleName].SetPtEtaPhiE(nominal.truthTop_pt[int(particleName[1:])-1], nominal.truthTop_eta[int(particleName[1:])-1], nominal.truthTop_phi[int(particleName[1:])-1], nominal.truthTop_e[int(particleName[1:])-1])
     return particleLVs
 
+def getLVofMatchedJets(jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
+    result = {}
+    particlePartons = getParticlesGroupName(args.reconstruction)
+    for particle in particlePartons:
+        result[particle] = ROOT.TLorentzVector()
+        result[particle].SetPxPyPzE(0,0,0,0)
+        for parton in particlePartons[particle]:
+            if particle+'/'+parton in assignmentDict and assignmentDict[particle+'/'+parton] != -1:
+                result[particle] += jetLVs[assignmentDict[particle+'/'+parton]]
+    return result
+
 def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
     wellness = {}
     # Number of jets that were matched to partons
@@ -644,21 +663,24 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
     # Flag that all jets are unique
     wellness['unique'] = targetsAreUnique([assignmentDict[partonLabel] for partonLabel in assignmentDict])
 
-    # Number of completly matched particles
     # i.e. particles for which all partons are matched to jets
     numberComplete = 0
-    for group in args.reconstruction.split('|'):
-        subgroups = group.split('(')
-        particleName = subgroups[0]
-        partons = subgroups[1][:-1].split(',')
-        if all([assignmentDict[particleName+'/'+parton] != -1 for parton in partons]):
+    # getParticlesGroupName(args.reconstruction)
+    
+    # Calculating the number of completly matched particles (tops)
+    particlePartons = getParticlesGroupName(args.reconstruction)
+    for particle in particlePartons:
+        partons = particlePartons[particle]
+        if all([assignmentDict[particle+'/'+parton] != -1 for parton in partons]):
             numberComplete += 1
+    
     wellness['nCompleteMatch'] = numberComplete
     # TODO: add further flags on quality of mathces 
     # And kinematic quatlity information
     # Such as masses and DR between particles and matched jets as a basis for comparison
     particleLVs = getParticleLVs(nominal, args)
     particleMatchedLVs = {}
+    lvOfMatchedJets = getLVofMatchedJets(jetLVs, assignmentDict, args)
     # Print masses:
     for particle in particleLVs:
         # print(f'Truth {particle} : {particleLVs[particle].M()*0.001}')
@@ -681,7 +703,7 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
         wellness[f'{particle}_MatchMass'] = matchedMass
         wellness[f'{particle}_DeltaR'] = deltaR
         wellness[f'{particle}_PtRatio'] = PtRatio
-
+        wellness[f'{particle}_MatchedJetsMass'] = lvOfMatchedJets[particle].M()*0.001 if particle in lvOfMatchedJets else -1
     return wellness
 
 def findPartonJetPairs(nominal, args) -> tuple:
@@ -795,19 +817,21 @@ if __name__ == "__main__":
     file_paths = []
 
     parser=argparse.ArgumentParser()
-    parser.add_argument('-i', '--inloc', default='/home/timoshyd/RAC_4tops_analysis/ntuples/v06_BDT_SPANET_Input/nom', type=str, help='Input file location')
-    parser.add_argument('-r', '--reconstruction', default='t1(b,q1,q2)|t2(b,q1,q2)|t3(b,q1,q2)|t4(b,q1,q2)', type=str, help='Topology of underlying event')
-    parser.add_argument('-t', '--topo', default='tttt', type=str, help='Topology of underlying event')
-    parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/four_top_SPANET_input', type=str, help='Output location')
-    parser.add_argument('-m', '--maxjets', default=18, type=int, help='Max number of jets')
-    parser.add_argument('-tr', '--treename', default='nominal', type=str, help='Name of nominal tree')
-    parser.add_argument('-b', '--btag', type=str, default='DL1r', help='Which btag alg to use')
-    parser.add_argument('--oddeven', action='store_false' , help='Split into odd and even events')
-    parser.add_argument('--test', action='store_true', help='Test the code')
-    parser.add_argument('--ignoreDecay', action='store_true', help='Ignore the decay type of tops')
-    parser.add_argument('-p','--prefix',default='year18_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files Via looking which exacylt to use')
-    parser.add_argument('-s','--suffix',default='_tttt', choices=['_tttt',], help='Suffix to separate files')
-    parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files')
+    parser.add_argument('-i', '--inloc', default='/home/timoshyd/RAC_4tops_analysis/ntuples/v06_BDT_SPANET_Input/nom', type=str, help='Input file location.')
+    parser.add_argument('-r', '--reconstruction', default='t1(b,q1,q2)|t2(b,q1,q2)|t3(b,q1,q2)|t4(b,q1,q2)', type=str, help='Topology of underlying event.')
+    parser.add_argument('-t', '--topo', default='tttt', type=str, help='Topology of underlying event.')
+    parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/four_top_SPANET_input', type=str, help='Output location. File type of .h5 will be added automatically.')
+    parser.add_argument('-m', '--maxjets', default=18, type=int, help='Max number of jets.')
+    parser.add_argument('-tr', '--treename', default='nominal', type=str, help='Name of nominal tree.')
+    parser.add_argument('-b', '--btag', type=str, default='DL1r', help='Which btag alg to use.')
+    parser.add_argument('--oddeven', action='store_false' , help='Split into odd and even events.')
+    parser.add_argument('--test', action='store_true', help='Test the code.')
+    parser.add_argument('--ignoreDecay', action='store_true', help='Ignore the decay type of tops.')
+    parser.add_argument('-p','--prefix',default='year18_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files Via looking which exacylt to use.')
+    parser.add_argument('-s','--suffix',default='_tttt', choices=['_tttt',], help='Suffix to separate files.')
+    parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files.')
+    parser.add_argument('--tag',default='_8JETS', help='Suffix to differentiate files.')
+    
     args = parser.parse_args()
 
     if args.prefix != '':
@@ -816,9 +840,9 @@ if __name__ == "__main__":
         print('Old output location:', args.outloc)
         args.outloc = '/'.join(listNameParts)
         print('New output location:', args.outloc)
-    if args.suffix != '':
+    if args.suffix != '' or args.tag != '':
         listNameParts = args.outloc.split('/')
-        listNameParts[-1] = listNameParts[-1] + args.suffix
+        listNameParts[-1] = listNameParts[-1] + args.suffix + args.tag
         print('Old output location:', args.outloc)
         args.outloc = '/'.join(listNameParts)
         print('New output location:', args.outloc)
