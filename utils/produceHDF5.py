@@ -115,9 +115,7 @@ def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> b
     if len(uniqueSet) != len(notUnique):
         return False
 
-    # args.reconstruction
-
-    groupedNames = getParticlesGroupName(args.reconstruction)
+    groupedNames = args.particlesGroupName
     for particle in groupedNames:
         # Check that each particle has at least one jet assigned
         if all([ assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]):
@@ -231,16 +229,17 @@ def source(root_files : list, args: argparse.Namespace):
        
         # Set histograms
         histoDict = {}
-        histoDict['MatchedMass'] = ROOT.TH1F('MatchedMass', 'MatchedMass', 100, 0, 500)
-        histoDict['TruthMass'] = ROOT.TH1F('TruthMass', 'TruthMass', 100, 0, 500)
-        histoDict['DeltaR'] = ROOT.TH1F('DeltaR', 'DeltaR', 100, -1, 4)
-        histoDict['PtRatio'] = ROOT.TH1F('PtRatio', 'PtRatio', 100, -1, 4)
-        histoDict['MatchedJetsMass'] = ROOT.TH1F('MatchedJetsMass', 'MatchedJetsMass', 100, 0, 500)
-
-        histoDict['topTruthRecoDeltaR'] = ROOT.TH1F('topTruthRecoDeltaR', 'topTruthRecoDeltaR', 100, -1, 4)
-        histoDict['topTruthRecoPtRatio'] = ROOT.TH1F('topTruthRecoPtRatio', 'topTruthRecoPtRatio', 100, -1, 4)
-        histoDict['partonRecoDeltaR'] = ROOT.TH1F('partonRecoDeltaR', 'partonRecoDeltaR', 100, -1, 4)
-        histoDict['partonRecoPtRatio'] = ROOT.TH1F('partonRecoPtRatio', 'partonRecoPtRatio', 100, -1, 4)
+        histoDict['MatchedMass'] = ROOT.TH1F('MatchedMass;Mass [GeV];Event weight', 'MatchedMass;Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['TruthMass'] = ROOT.TH1F('TruthMass;Mass [GeV];Event weight', 'TruthMass;Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['MatchedJetsMass'] = ROOT.TH1F('MatchedJetsMass;Mass [GeV];Event weight', 'MatchedJetsMass;Mass [GeV];Event weight', 100, 0, 500)
+        
+        histoDict['DeltaR'] = ROOT.TH1F('DeltaR;#Delta R;Event weight', 'DeltaR;#Delta R;Event weight', 100, -1, 4)
+        histoDict['topTruthRecoDeltaR'] = ROOT.TH1F('topTruthRecoDeltaR;#Delta R;Event weight', 'topTruthRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
+        histoDict['partonRecoDeltaR'] = ROOT.TH1F('partonRecoDeltaR;#Delta R;Event weight', 'partonRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
+        
+        histoDict['PtRatio'] = ROOT.TH1F('PtRatio;p_{T,1}/p_{T,2};Event weight', 'PtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
+        histoDict['topTruthRecoPtRatio'] = ROOT.TH1F('topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
+        histoDict['partonRecoPtRatio'] = ROOT.TH1F('partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
 
         for histo in histoDict:
             histoDict[histo].Sumw2()
@@ -278,16 +277,21 @@ def source(root_files : list, args: argparse.Namespace):
                 # Now do the particle groups, ie the truth targets
                 # One could apply cuts here if desired, but usually inclusive training is best!
                 # print(assignmentDict)
-                if not goodEvent(nominal, args): continue
+                
+                isGoodEvent = goodEvent(nominal, args)
+                if not isGoodEvent and not args.ignoreCuts: 
+                    continue
                 
                 # Old parton jets assignment. Done in RAC. Has problems: no protection against repetitions
-                assignmentDict = assignIndicesljetsttbar(nominal, args)
+                assignmentDict_Old = assignIndicesljetsttbar(nominal, args)
                 
                 # New parton jets assignment. Done in RAC. Has problems: no protection against repetitions
-                assignment, quality = findPartonJetPairs(nominal, args)
+                assignmentDict = findPartonJetPairs(nominal, args)
 
-                # Here we set which assignment to use
-                assignmentDict = assignment
+                partonLVs = getPartonLVs(nominal, args)
+                jetLVs = getJetLVs(nominal, args)
+                quality = evaluateAssignmentQuality(nominal, partonLVs, jetLVs, assignmentDict, args)
+
                 # Quality keys:
                 # 'nAssigned', 'unique', 'nCompleteMatch', 
                 # 't@_TruthMass', 't@_MatchMass', 't@_DeltaR', 't@_PtRatio'
@@ -296,17 +300,19 @@ def source(root_files : list, args: argparse.Namespace):
                 
                 if not True:
                     print('Old | New Assignments:')
-                    for group in getParticlesGroupName(args.reconstruction):
-                        for parton in getParticlesGroupName(args.reconstruction)[group]:
+                    particleParton = args.particlesGroupName
+                    for group in particleParton:
+                        for parton in particleParton[group]:
                             oldMatch = assignmentDict[group+'/'+parton] if group+'/'+parton in assignmentDict else 'N'
                             newMatch = assignment[group+'/'+parton] if group+'/'+parton in assignment else 'N'
                             print(group+'/'+parton+":", oldMatch, '|', newMatch)
                 
-                if not goodAssignment(nominal, assignmentDict, args): 
-                    # print(assignmentDict)
+                isGoodAssignment = goodAssignment(nominal, assignmentDict, args)
+                if not isGoodAssignment and not args.ignoreCuts: 
                     continue
+
                 
-                for group in getParticlesGroupName(args.reconstruction):
+                for group in args.particlesGroupName:
 
                     histoDict['MatchedMass'].Fill( quality[f'{group}_MatchMass']  , nominal.weight_final)
                     histoDict['TruthMass'].Fill( quality[f'{group}_TruthMass']  , nominal.weight_final)
@@ -419,7 +425,7 @@ def source(root_files : list, args: argparse.Namespace):
         # Create "source" group in HDF5 file, adding feature data sets
         for out, modulus, remainder in zip(outfiles, modulusList, remainderList):
             indices = np.where(np.array(inputDict['AUX/aux/eventNumber']) % modulus == remainder)
-            print(f'Outpufile: {out}')
+            print(f'Output file for remainder {remainder}: {out}')
             print(f'indices for {remainder} after division by {modulus}:', len(indices[0]))
             # Print out only elements that are in indices:
             print('eventNumber_list:',len(np.array(inputDict['AUX/aux/eventNumber'])[indices]))
@@ -462,7 +468,9 @@ def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
     # Get Date and Time in format: dd-mm-yyyy
     dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
     if args.test : dateTimeVal += '_test'
-    pickle.dump(histoDict, open(f'pickles/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl', 'wb'))
+    pickleFileName = f'pickles/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl'
+    pickle.dump(histoDict, open(pickleFileName, 'wb'))
+    print(f'Histograms saved in pickle format: {pickleFileName}')
     for histo in histoDict:
         c = ROOT.TCanvas()
         histoDict[histo].Draw()
@@ -523,10 +531,11 @@ def getTrue_N_DetectedMasses(partonLVs : dict, jetLVs : dict, assignemnt : dict,
     This function returns the masses of the parton level and the detected level.
     '''
     result = {}
-    for group in args.reconstruction.split('|'):
+    particlePartonGroup = args.particlesGroupName
+    for group in particlePartonGroup:
         subgroups = group.split('(')
-        particleName = subgroups[0]
-        partons = subgroups[1][:-1].split(',')
+        particleName = group
+        partons = particlePartonGroup[group]
         partonSet = []
         jetSet = []
         jetDict = {}
@@ -574,7 +583,7 @@ def printPartonJetMatches(costMatrix : dict, partonToJets : dict, jetToPartons :
 
 def getPartonLVs(nominal, args : argparse.Namespace) -> dict:
     partonLVs = {}    
-    groupedNames = getParticlesGroupName(args.reconstruction)
+    groupedNames = args.particlesGroupName
     
     # print(f'Total partons to match:', sum( [len(groupedNames[_]) for _ in groupedNames]) )
         
@@ -644,7 +653,7 @@ def getParticleLVs(nominal, args : argparse.Namespace) -> dict:
     {'t1' : ROOT.TLorentzVector,..}
     '''
     particleLVs = {}
-    for particle in getParticlesGroupName(args.reconstruction):
+    for particle in args.particlesGroupName:
         particleLVs[particle] = ROOT.TLorentzVector()
         particleIter = int(particle[1:])-1
         particleLVs[particle].SetPtEtaPhiE(nominal.truthTop_pt[particleIter], nominal.truthTop_eta[particleIter], nominal.truthTop_phi[particleIter], nominal.truthTop_e[particleIter])
@@ -655,7 +664,7 @@ def getParticleMatchedLVs( partonLVs : dict, assignmentDict : dict, args : argpa
     {'t1' : ROOT.TLorentzVector,..}. If no parton is matched, the Lorentz vector is set to 0.
     '''
     result = {}
-    particleGroups = getParticlesGroupName(args.reconstruction)
+    particleGroups = args.particlesGroupName
     for particle in particleGroups:
         result[particle] = ROOT.TLorentzVector()
         result[particle].SetPxPyPzE(0,0,0,0) # Empty vector
@@ -670,7 +679,7 @@ def getLVofMatchedJets(jetLVs : dict, assignmentDict : dict, args : argparse.Nam
     Calculate the Lorentz vectors of the matched jets for each principal particles
     '''
     result = {}
-    particlePartons = getParticlesGroupName(args.reconstruction)
+    particlePartons = args.particlesGroupName
     for particle in particlePartons:
         result[particle] = ROOT.TLorentzVector()
         result[particle].SetPxPyPzE(0,0,0,0)
@@ -694,10 +703,9 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
 
     # i.e. particles for which all partons are matched to jets
     numberComplete = 0
-    # getParticlesGroupName(args.reconstruction)
     
     # Calculating the number of completly matched particles (tops)
-    particlePartons = getParticlesGroupName(args.reconstruction)
+    particlePartons = args.particlesGroupName
     for particle in particlePartons:
         partons = particlePartons[particle]
         if all([assignmentDict[particle+'/'+parton] != -1 for parton in partons]):
@@ -818,20 +826,17 @@ def findPartonJetPairs(nominal, args) -> tuple:
         if partonLabel not in result:
             result[partonLabel] = -1
         
-    # Use this information for later quality control 
-    wellness = evaluateAssignmentQuality(nominal, partonLVs, jetLVs, result, args)
-    
     if not True:
         print('Wellness:', wellness)
         printMassInfo(partonLVs, jetLVs, result, args)
 
-    return (result, wellness)
+    return result
 
 def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     """
     This funciton returns the indices of the partons and jets in the SPA-Net format
     """
-    groupedNames = getParticlesGroupName(args.reconstruction)
+    groupedNames = args.particlesGroupName
     result = {}
     for group in groupedNames:
         for parton in groupedNames[group]:
@@ -867,11 +872,11 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--btag', type=str, default='DL1r', help='Which btag alg to use.')
     parser.add_argument('--oddeven', action='store_false' , help='Split into odd and even events.')
     parser.add_argument('--test', action='store_true', help='Test the code.')
-    parser.add_argument('--ignoreDecay', action='store_true', help='Ignore the decay type of tops.')
     parser.add_argument('-p','--prefix',default='year18_', choices=['year15+16_','year17_','year18_'],help='Prefix to separate files Via looking which exacylt to use.')
     parser.add_argument('-s','--suffix',default='_tttt', choices=['_tttt',], help='Suffix to separate files.')
     parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files.')
     parser.add_argument('--tag',default='_8JETS', help='Suffix to differentiate files.')
+    parser.add_argument('--ignoreCuts', action='store_true', help='Ignore the cuts. Used to produced dataset for prediction.')
 
     args = parser.parse_args()
     args.particlesGroupName = getParticlesGroupName(args.reconstruction)
@@ -942,5 +947,4 @@ if __name__ == "__main__":
     displayFoundFiles(file_paths)
     # Run production:
     source(file_paths, args)
-    print(args.particlesGroupName)
 
