@@ -8,10 +8,14 @@ def main(path: str, typeDict : dict)->None:
     '''
     with open(path, 'rb') as f:
         cutFlow = pickle.load(f)
+    print('Found following cuts:')
+    for cut in cutFlow:
+        print(f'  {cut}')
     for cut in cutFlow:
         nEvents = len(cutFlow['numberOfEvents'])
         if cut not in typeDict:
-            print(f'Cut {cut} not in typeDict')
+            print('Warning:')
+            print(f'  Cut {cut} not in typeDict. Skipping\n')
             continue
         if typeDict[cut] == 'bool':
             array = np.array(cutFlow[cut])
@@ -41,12 +45,19 @@ def main(path: str, typeDict : dict)->None:
 if __name__ == '__main__':
     typeDict = {
         'numberOfEvents' : 'bool',
+        'toUse' : 'bool',
         'JetNumber' : 'bool',
+        'fourTops' : 'bool',
         'bJetNumber' : 'bool',
         'DecayType' : 'uint',
         'isAllHad' : 'bool',
         'Uniqueness' : 'bool',
         'AssignemntCheck' : 'bool',
+        'jetsBelowMax' : 'bool',
+        '1+jetPerParticle' : 'bool',
+        'isGoodEvent' : 'bool',
+        'isGoodAssignment' : 'bool',
+        'eventWeight' : 'float',
     }
 
 
@@ -74,4 +85,4 @@ if __name__ == '__main__':
     plt.grid(True)
     plt.savefig('plots/cutflow.png')
 
-    main(path='pickles/cutflow_year18__tttt_04-04-2024_test.pkl', typeDict=typeDict)
+    main(path='pickles/cutflow_year18__tttt_05-04-2024_test.pkl', typeDict=typeDict)
