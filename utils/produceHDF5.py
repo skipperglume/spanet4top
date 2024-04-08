@@ -77,52 +77,70 @@ def number_of_jets( topTargets : list ) -> int:
                      result += 1
        return result
 
-def goodEvent( tree : ROOT.TTree, args : argparse.Namespace) -> bool:
+def goodEvent( tree : ROOT.TTree, args : argparse.Namespace, cutflowCount : dict) -> bool:
     result = True
 
+    # cutflowCount['numberOfEvents'].append(True) 
     # Selection on number of jets
-    if not tree.n_jet >= 8: 
+    if tree.n_jet >= 8:
+        cutflowCount['JetNumber'][-1] = True
+    else:
         result = False
+
     # Selection on number of b-tagged jets
-    if not tree.n_bjet >= 1:
+    if tree.n_bjet >= 1:
+        cutflowCount['bJetNumber'][-1] = True
+    else:
         result = False
+
     # Check that event indeed has 4 top quarks (happens that some events have 3)
     if len(list(tree.truthTop_isLepDecay)) != 4 : 
         result = False
+    else:
+        cutflowCount['fourTops'][-1] = True
     # Check that the event is all hadronic:
     isNotAllHad = 1 if sum([float(x.encode("utf-8").hex()) for x in list(tree.truthTop_isLepDecay)]) > 0 else 0
     if isNotAllHad: 
         result = False
-    # print('Is Not All Hadronic:', isNotAllHad)
-    
+    else: 
+        cutflowCount['isAllHad'][-1] = True
     return result
-def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace ) -> bool:
+
+def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace, cutflowCount : dict ) -> bool:
+    result = True
+
+
     # Check that jet indices are above value of maximum number of jets
+    jetsBelowMax = True
     for jetParton in assignmentDict:
         if assignmentDict[jetParton] >= args.maxjets:
-            return False
+            result = False
+            jetsBelowMax = False
+            break
+    if jetsBelowMax:
+        cutflowCount['jetsBelowMax'][-1] = True
     
-    uniqueSet = set([assignmentDict[jetParton] for jetParton in assignmentDict if assignmentDict[jetParton] != -1])
-    notUnique = [assignmentDict[jetParton] for jetParton in assignmentDict if assignmentDict[jetParton] != -1]
-    indexDict = {}
-    for jetParton in assignmentDict:
-        if assignmentDict[jetParton] != -1:
-            if assignmentDict[jetParton] not in indexDict:
-                indexDict[assignmentDict[jetParton]] = 1
-            else:
-                indexDict[assignmentDict[jetParton]] += 1
     # Check uniqueness of the assignments. Same jet should not correspond to different partons
-    if len(uniqueSet) != len(notUnique):
-        return False
+    isUnique = targetsAreUnique(list(assignmentDict.values()))
+    if not isUnique :
+        result = False
+    else:
+        cutflowCount['Uniqueness'][-1] = True
 
+    # Check that each particle has at least one jet assigned
     groupedNames = args.particlesGroupName
+    jetPerParticle = True
     for particle in groupedNames:
-        # Check that each particle has at least one jet assigned
         if all([ assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]):
-            return False
+            result = False
+            jetPerParticle = False
+            break
         # if sum([assignmentDict[particle +'/'+target] == -1 for target in groupedNames[particle]]) > 1:
-            # return False
-    return True
+            # result = False
+    if jetPerParticle: 
+        cutflowCount['1+jetPerParticle'][-1] = True
+    
+    return result
 
 def getParticlesGroupName(reconstructionTargets) -> dict :
     '''
@@ -135,7 +153,7 @@ def getParticlesGroupName(reconstructionTargets) -> dict :
         groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')                
     return groupedNames
 
-def source(root_files : list, args: argparse.Namespace):
+def source(root_files : list, args: argparse.Namespace) -> None:
         """
         Create HDF5 file and create the "source" group in the HDF5 file.
         """
@@ -200,10 +218,23 @@ def source(root_files : list, args: argparse.Namespace):
         inputDict['AUX/aux/decayType'] = []
 
         # These variables are needed to check the selection criteria
-        countDict = {}
-        countDict['passJetNumber'] = []
-        countDict['passDecayType'] = []
-        countDict['passAssignemntCheck'] = []
+        cutFlowDict = {}
+        cutFlowVars = [   'toUse',
+            'numberOfEvents',
+            'eventWeight',
+            'JetNumber',
+            'bJetNumber',
+            'DecayType',
+            'isAllHad',
+            'Uniqueness',
+            'jetsBelowMax',
+            '1+jetPerParticle',
+            'fourTops',
+            'isGoodEvent',
+            'isGoodAssignment',
+            ]
+        for varName in cutFlowVars:
+            cutFlowDict[varName] = []
         # inputDict['AUX/aux/extrajet_list'] = []
         # inputDict['AUX/aux/empty_list'] = []
 
@@ -229,17 +260,17 @@ def source(root_files : list, args: argparse.Namespace):
        
         # Set histograms
         histoDict = {}
-        histoDict['MatchedMass'] = ROOT.TH1F('MatchedMass;Mass [GeV];Event weight', 'MatchedMass;Mass [GeV];Event weight', 100, 0, 500)
-        histoDict['TruthMass'] = ROOT.TH1F('TruthMass;Mass [GeV];Event weight', 'TruthMass;Mass [GeV];Event weight', 100, 0, 500)
-        histoDict['MatchedJetsMass'] = ROOT.TH1F('MatchedJetsMass;Mass [GeV];Event weight', 'MatchedJetsMass;Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['MatchedMass'] =          ROOT.TH1F('MatchedMass;Mass [GeV];Event weight', 'MatchedMass;Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['TruthMass'] =            ROOT.TH1F('TruthMass;Mass [GeV];Event weight', 'TruthMass;Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['MatchedJetsMass'] =      ROOT.TH1F('MatchedJetsMass;Mass [GeV];Event weight', 'MatchedJetsMass;Mass [GeV];Event weight', 100, 0, 500)
         
-        histoDict['DeltaR'] = ROOT.TH1F('DeltaR;#Delta R;Event weight', 'DeltaR;#Delta R;Event weight', 100, -1, 4)
-        histoDict['topTruthRecoDeltaR'] = ROOT.TH1F('topTruthRecoDeltaR;#Delta R;Event weight', 'topTruthRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
-        histoDict['partonRecoDeltaR'] = ROOT.TH1F('partonRecoDeltaR;#Delta R;Event weight', 'partonRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
+        histoDict['DeltaR'] =               ROOT.TH1F('DeltaR;#Delta R;Event weight', 'DeltaR;#Delta R;Event weight', 100, -1, 4)
+        histoDict['topTruthRecoDeltaR'] =   ROOT.TH1F('topTruthRecoDeltaR;#Delta R;Event weight', 'topTruthRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
+        histoDict['partonRecoDeltaR'] =     ROOT.TH1F('partonRecoDeltaR;#Delta R;Event weight', 'partonRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
         
-        histoDict['PtRatio'] = ROOT.TH1F('PtRatio;p_{T,1}/p_{T,2};Event weight', 'PtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
-        histoDict['topTruthRecoPtRatio'] = ROOT.TH1F('topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
-        histoDict['partonRecoPtRatio'] = ROOT.TH1F('partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
+        histoDict['PtRatio'] =              ROOT.TH1F('PtRatio;p_{T,1}/p_{T,2};Event weight', 'PtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
+        histoDict['topTruthRecoPtRatio'] =  ROOT.TH1F('topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
+        histoDict['partonRecoPtRatio'] =    ROOT.TH1F('partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
 
         for histo in histoDict:
             histoDict[histo].Sumw2()
@@ -268,7 +299,7 @@ def source(root_files : list, args: argparse.Namespace):
             # if args.test: eventRange = range(3550000+ 28000, eventNumber)
             for i in tqdm(eventRange):
                 # Early stopping for testing
-                if args.test and i-eventRange[0] > 5000 : break
+                if args.test and i-eventRange[0] > 1000 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
@@ -278,9 +309,18 @@ def source(root_files : list, args: argparse.Namespace):
                 # One could apply cuts here if desired, but usually inclusive training is best!
                 # print(assignmentDict)
                 
-                isGoodEvent = goodEvent(nominal, args)
+                for varName in cutFlowVars:
+                    cutFlowDict[varName].append(False)
+                cutFlowDict['eventWeight'][-1] = nominal.weight_final
+                cutFlowDict['DecayType'][-1] = sum([int(x.encode("utf-8").hex()) for x in list(nominal.truthTop_isLepDecay)])
+
+                isGoodEvent = goodEvent(nominal, args, cutFlowDict)
                 if not isGoodEvent and not args.ignoreCuts: 
+                    for varName in cutFlowVars:
+                        cutFlowDict[varName] = cutFlowDict[varName][:-1]
                     continue
+                if isGoodEvent:
+                    cutFlowDict['isGoodEvent'][-1] = True
                 
                 # Old parton jets assignment. Done in RAC. Has problems: no protection against repetitions
                 assignmentDict_Old = assignIndicesljetsttbar(nominal, args)
@@ -307,10 +347,16 @@ def source(root_files : list, args: argparse.Namespace):
                             newMatch = assignment[group+'/'+parton] if group+'/'+parton in assignment else 'N'
                             print(group+'/'+parton+":", oldMatch, '|', newMatch)
                 
-                isGoodAssignment = goodAssignment(nominal, assignmentDict, args)
+                isGoodAssignment = goodAssignment(nominal, assignmentDict, args, cutFlowDict)
                 if not isGoodAssignment and not args.ignoreCuts: 
+                    for varName in cutFlowVars:
+                        cutFlowDict[varName] = cutFlowDict[varName][:-1]
                     continue
-
+                if isGoodAssignment:
+                    cutFlowDict['isGoodAssignment'][-1] = True
+                
+                if isGoodAssignment and isGoodEvent:
+                    cutFlowDict['toUse'][-1] = True
                 
                 for group in args.particlesGroupName:
 
@@ -400,6 +446,9 @@ def source(root_files : list, args: argparse.Namespace):
                 # empty = -1
                 # empty_list.append(empty)
 
+            # If size of current events gets big enough, write\append to HDF5 file
+            # TODO: Need to check if indeed memory gets overloaded!
+            # partialWrite()
             # Close ROOT files
             f.Close()
         collectedEvents = len(inputDict['AUX/aux/eventNumber'])
@@ -431,6 +480,14 @@ def source(root_files : list, args: argparse.Namespace):
             print('eventNumber_list:',len(np.array(inputDict['AUX/aux/eventNumber'])[indices]))
             write( out, args.topo, featuresToSave, indices, inputDict, {} )
         plotHistograms( histoDict, args)
+        saveCutflow(cutFlowDict, args)
+
+def partialWrite():
+    '''
+    Method that partially saves the events to the HDF5 file. To not overload the memory.
+    '''
+    partialOutloc = 'PLACE_HOLDER.h5'
+    print(f'Saved Events to {partialOutloc}')
 
 
 def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, inputDict, decayDict : dict):
@@ -461,6 +518,17 @@ def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, i
 
     HDF5.close()
 
+def saveCutflow(cutFlow : dict, args : argparse.Namespace) -> None:
+    '''
+    Save the cutflow in a pickle file.
+    '''
+    # Get Date and Time in format: dd-mm-yyyy
+    dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
+    if args.test : dateTimeVal += '_test'
+    pickleFileName = f'pickles/cutflow_{args.prefix}_{args.topo}_{dateTimeVal}.pkl'
+    pickle.dump(cutFlow, open(pickleFileName, 'wb'))
+    print(f'Cutflow saved in pickle format: {pickleFileName}')
+     
 def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
     '''
     Save the histograms as pickle dump file and also as png files.
@@ -526,7 +594,7 @@ def jetSetMass(nominal , jetSet : list, args : argparse.Namespace) -> float:
 
     return mass
 
-def getTrue_N_DetectedMasses(partonLVs : dict, jetLVs : dict, assignemnt : dict, args : argparse.Namespace) -> dict:
+def getTrue_N_DetectedMasses(partonLVs : dict, jetLVs : dict, assignment : dict, args : argparse.Namespace) -> dict:
     '''
     This function returns the masses of the parton level and the detected level.
     '''
@@ -545,9 +613,9 @@ def getTrue_N_DetectedMasses(partonLVs : dict, jetLVs : dict, assignemnt : dict,
             if f'{particleName}/{parton}' in partonLVs:
                 partonSet.append(partonLVs[f'{particleName}/{parton}'])
             
-            if f'{particleName}/{parton}' in assignemnt and assignemnt[f'{particleName}/{parton}'] != -1:
-                jetSet.append(  jetLVs[assignemnt[f'{particleName}/{parton}']] )
-                jetDict[parton] = assignemnt[f'{particleName}/{parton}']
+            if f'{particleName}/{parton}' in assignment and assignment[f'{particleName}/{parton}'] != -1:
+                jetSet.append(  jetLVs[assignment[f'{particleName}/{parton}']] )
+                jetDict[parton] = assignment[f'{particleName}/{parton}']
         
         particleMass = massFromLVs(partonSet, 0.001)
         
@@ -559,11 +627,11 @@ def getTrue_N_DetectedMasses(partonLVs : dict, jetLVs : dict, assignemnt : dict,
         result[ particleName ] = {'particle': particleMass, 'detected': detectedMass, 'jets': jetDict}
     return result
 
-def printMassInfo(partonLVs : dict, jetLVs : dict, assignemnt : dict, args : argparse.Namespace) -> None:
+def printMassInfo(partonLVs : dict, jetLVs : dict, assignment : dict, args : argparse.Namespace) -> None:
     '''
     This function prints the mass information of parton level and matched one.
     '''
-    compressedDict = getTrue_N_DetectedMasses(partonLVs, jetLVs, assignemnt, args)
+    compressedDict = getTrue_N_DetectedMasses(partonLVs, jetLVs, assignment, args)
     for particle in compressedDict:
         particleMass = compressedDict[particle]['particle']
         detectedMass = compressedDict[particle]['detected']
@@ -690,6 +758,10 @@ def getLVofMatchedJets(jetLVs : dict, assignmentDict : dict, args : argparse.Nam
     return result
 
 def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
+    '''
+    This method evaluates the quality of the assignment of partons to jets.
+    Such metrics as masses, Delta R between the reconstructed and true particles.
+    '''
     wellness = {}
     # Number of jets that were matched to partons
     numberAssigned = 0
@@ -947,4 +1019,3 @@ if __name__ == "__main__":
     displayFoundFiles(file_paths)
     # Run production:
     source(file_paths, args)
-
