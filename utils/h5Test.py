@@ -2,8 +2,6 @@ import argparse
 import h5py
 import os
 import numpy as np
-filename = "/home/timoshyd/spanet4Top/SPANet/data/full_hadronic_ttbar/example.h5"
-filename = "/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input_even.h5"
 
 def recursiveHDF5List(currentContainer, spaceVal=0):
     for key in currentContainer.keys():
@@ -50,15 +48,15 @@ def printCompactKeyDict(key_dict, spaceVal=0, verbose=False):
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()
-    parser.add_argument('-fn','--filename', default='four_top_SPANET_input/four_top_SPANET_input_even.h5', type=str, help='Input file location')
+    parser.add_argument('-f','--filename', default='four_top_SPANET_input/four_top_SPANET_input_even.h5', type=str, help='Input file location')
     parser.add_argument('-n','--nPoints', default=1, type=int, help='Number of Data points to diplay')
     parser.add_argument('-s', '--shift' , default=0, type=int, help='Shift the data points to display')
     parser.add_argument('-v', '--verbose' , action='store_true', help='Verbose output: prints more info')
-    args = parser.parse_args()
+    
     args = parser.parse_args()
     # Check if file exists
     if not os.path.exists(args.filename):
-        print("File does not exist")
+        print(" == File does not exist ==")
         exit(1)
     # Open hdf5 file using h5py
     f = h5py.File(args.filename, 'r')
@@ -87,19 +85,22 @@ if __name__ == "__main__":
     # f.visit(printname)
 
     # Display firt n data points
-    print('--------------------')
-    print(f'Display {args.nPoints} data points from position {args.shift}:')
+    if args.nPoints > 0:
 
-    # for index in range(f['TARGETS']['t1']['b'].shape[0]):
-    for index in range(args.nPoints):
-        # check  = [False]*f['INPUTS'][list(key_dict['INPUTS'].keys())[0]]['MASK'][index:index+1].shape[1]
-        # print('Mask for real vs duds:\n',f['INPUTS'][list(key_dict['INPUTS'].keys())[0]]['MASK'][index:index+1])
-        for key in key_dict.keys():
-            print(f'{key}:')
-            for sub_key in key_dict[key].keys():
-                print(f'\t{sub_key}:')
-                for sub_sub_key in key_dict[key][sub_key].keys():
-                    print(f'\t\t{sub_sub_key}:',f[key][sub_key][sub_sub_key][index:index+1])
+        print('--------------------')
+        print(f'Display {args.nPoints} data points from position {args.shift}:')
+
+        # for index in range(f['TARGETS']['t1']['b'].shape[0]):
+
+        for index in range(args.nPoints):
+            # check  = [False]*f['INPUTS'][list(key_dict['INPUTS'].keys())[0]]['MASK'][index:index+1].shape[1]
+            # print('Mask for real vs duds:\n',f['INPUTS'][list(key_dict['INPUTS'].keys())[0]]['MASK'][index:index+1])
+            for key in key_dict.keys():
+                print(f'{key}:')
+                for sub_key in key_dict[key].keys():
+                    print(f'\t{sub_key}:')
+                    for sub_sub_key in key_dict[key][sub_key].keys():
+                        print(f'\t\t{sub_sub_key}:',f[key][sub_key][sub_sub_key][index:index+1])
         
     print('Finished')
 
