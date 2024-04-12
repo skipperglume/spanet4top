@@ -15,27 +15,13 @@ from sharedMethods import *
 from rich import pretty
 pretty.install()
 
-# TODO: implement Py Parsing
+# TODO: implement Py Parsing if needed
 # import pyparsing
 
-def eTOm(feats):
+def getMaxJets(root_files, treename='nominal', topo='ttbar'):
     """
-    Find jet masses by using TLorentzVector().SetPtEtaPhiE(pt, eta, phi, e), 
-    where e = nominal.jet_e since there is no jet_m, then finding the
-    mass of the LorentzVector with the M() method.
-    """
-    # Creating TLorentzVectors for each jet
-    vects = [ROOT.TLorentzVector() for i in feats[0]]
-    # SetPtEtaPhiE for each jet
-    for i in range(len(feats[0])):
-            vects[i].SetPtEtaPhiE(feats[0][i], feats[1][i], feats[2][i], feats[3][i])
-    # Using .M() method on each jet to get jet masses
-    m_ls = [j.M() for j in vects]
-    return m_ls
-
-def get_max_jets(root_files, treename='nominal', topo='ttbar'):
-    """
-    Find MAX_JETS for the data set
+    Find MAX_JETS for the data set. Save the found value to a file.
+    For tttt it\'s around 45
     """
     # Iterating over files to find MAX_JETS of data set
     print("Finding max number of jets.")
@@ -183,7 +169,7 @@ def goodAssignment(tree, assignmentDict : dict, args : argparse.Namespace, cutfl
     
     return result
 
-def getParticlesGroupName(reconstructionTargets) -> dict :
+def getParticlesGroupName(reconstructionTargets) -> dict:
     '''
     This method returns a dictionary of particle groups and their corresponding partons.
     E.g 't1(b,q1,q2)|t2(b,q1,q2)' -> {'t1': ['b', 'q1', 'q2'], 't2': ['b', 'q1', 'q2']}
@@ -193,6 +179,42 @@ def getParticlesGroupName(reconstructionTargets) -> dict :
         subgroups = group.split('(')
         groupedNames[subgroups[0]] = subgroups[1][:-1].split(',')                
     return groupedNames
+
+def getRotatedJetPhi(tree) -> dict:
+    '''
+    This method returns the jet phi and met phi rotated by the azimuthal angle of first jet
+    '''
+    result = {}
+    rotationalAngle = tree.jet_phi[0]
+    result['jet_phi_R'] = [ _ - rotationalAngle  for _ in tree.jet_phi]
+    result['met_phi_R'] = tree.met_phi - rotationalAngle
+    
+    # After rotation Phi can be less than (-2 * pi) or more than (2 * pi)
+    # We have to rotate by full circle it if providing to NN
+    # But we use sin and cos so we can ignore it
+    # for iter in range(len(rotatedPhis['jet_phi_R'])):
+    #     while rotatedPhis['jet_phi_R'][iter] > 2 * math.pi:
+    #         rotatedPhis['jet_phi_R'][iter] -= 2 * math.pi
+    #     while rotatedPhis['jet_phi_R'][iter] < - 2 * math.pi:
+    #         rotatedPhis['jet_phi_R'][iter] += 2 * math.pi
+    return result
+
+def getJetMass(tree, defaultMass=0.1) -> list:
+    '''
+    This method returns the jet masses. This input to SPANet that is quite unreliable.
+    As jets are considered massless in ATLAS. As well mass can be less than 0 due to rounding.
+    '''
+    result = []
+    jet = ROOT.TLorentzVector()
+    for iter in range(len(tree.jet_pt)):
+        jet.SetPtEtaPhiE(tree.jet_pt[iter], tree.jet_eta[iter], tree.jet_phi[iter], tree.jet_e[iter])
+        mass = jet.M()
+        if mass > 1.0:
+            result.append(jet.M())
+        else :
+            result.append(0.1)
+            # print(f'Negative mass: {jet.M()}. Set it to {defaultMass}')
+    return result
 
 def source(root_files : list, args: argparse.Namespace) -> None:
         """
@@ -210,11 +232,17 @@ def source(root_files : list, args: argparse.Namespace) -> None:
             'INPUTS/Source/e',
             'INPUTS/Source/sin_phi',
             'INPUTS/Source/cos_phi',
+            'INPUTS/Source/sin_phi_R',
+            'INPUTS/Source/cos_phi_R',
             'INPUTS/Source/btag',
+            
+            'INPUTS/Source/mass',
 
             'INPUTS/Met/met',
             'INPUTS/Met/sin_phi',
             'INPUTS/Met/cos_phi',
+            'INPUTS/Met/sin_phi_R',
+            'INPUTS/Met/cos_phi_R',
 
             # 'INPUTS/Met/met_x',
             # 'INPUTS/Met/met_y',
@@ -248,7 +276,10 @@ def source(root_files : list, args: argparse.Namespace) -> None:
         inputDict['INPUTS/Source/e'] = []
         inputDict['INPUTS/Source/sin_phi'] = []
         inputDict['INPUTS/Source/cos_phi'] = []
+        inputDict['INPUTS/Source/sin_phi_R'] = []
+        inputDict['INPUTS/Source/cos_phi_R'] = []
         inputDict['INPUTS/Source/btag'] = []
+        inputDict['INPUTS/Source/mass'] = []
 
         # Only one values per event 
         # MET
@@ -257,6 +288,8 @@ def source(root_files : list, args: argparse.Namespace) -> None:
         # inputDict['INPUTS/Met/met_y'] = []
         inputDict['INPUTS/Met/sin_phi'] = []
         inputDict['INPUTS/Met/cos_phi'] = []
+        inputDict['INPUTS/Met/sin_phi_R'] = []
+        inputDict['INPUTS/Met/cos_phi_R'] = []
         # Auxiliary variables for the output preparation
         inputDict['AUX/aux/eventNumber'] = []
         inputDict['AUX/aux/decayType'] = []
@@ -348,7 +381,7 @@ def source(root_files : list, args: argparse.Namespace) -> None:
             # mininterval=nSeconds
             for i in tqdm(eventRange, ):
                 # Early stopping for testing
-                if args.test and i - eventRange[0] > 2000 : break
+                if args.test and i - eventRange[0] > 200 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
@@ -447,7 +480,17 @@ def source(root_files : list, args: argparse.Namespace) -> None:
                 # eventDict['INPUTS/Met/met_y'] = nominal.met_met * math.sin(nominal.met_phi)
                 eventDict['INPUTS/Met/sin_phi'] = math.sin(nominal.met_phi)
                 eventDict['INPUTS/Met/cos_phi'] = math.cos(nominal.met_phi)
-                        
+
+                rotatedPhis = getRotatedJetPhi(nominal)
+                jetMass = getJetMass(nominal)
+                
+                eventDict['INPUTS/Source/sin_phi_R'] = [ math.sin(_) for _ in rotatedPhis['jet_phi_R'] ]
+                eventDict['INPUTS/Source/cos_phi_R'] = [ math.cos(_) for _ in rotatedPhis['jet_phi_R'] ]
+                eventDict['INPUTS/Met/sin_phi_R'] = math.sin(rotatedPhis['met_phi_R'])
+                eventDict['INPUTS/Met/cos_phi_R'] = math.cos(rotatedPhis['met_phi_R'])
+                
+                eventDict['INPUTS/Source/mass'] = jetMass
+
                 eventDict['AUX/aux/eventNumber'] = nominal.eventNumber
                 eventDict['AUX/aux/decayType'] = sum([ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)])
                 # Adding btag values according to WP
@@ -475,10 +518,19 @@ def source(root_files : list, args: argparse.Namespace) -> None:
                         eventDict[f'INPUTS/Source/{varName}'] = eventDict[f'INPUTS/Source/{varName}'][:MAX_JETS]
                     while len(eventDict[f'INPUTS/Source/{varName}']) < MAX_JETS:
                         eventDict[f'INPUTS/Source/{varName}'].append(0.0)
+                
+                for varName in [ 'sin_phi_R', 'cos_phi_R', 'mass'] :
+                    if len(eventDict[f'INPUTS/Source/{varName}']) >= MAX_JETS:
+                        eventDict[f'INPUTS/Source/{varName}'] = eventDict[f'INPUTS/Source/{varName}'][:MAX_JETS]
+                    while len(eventDict[f'INPUTS/Source/{varName}']) < MAX_JETS:
+                        eventDict[f'INPUTS/Source/{varName}'].append(0.0)
+
                 # Appending event feature lists to data set ((EVENTS, MAX_JETS)) feature lists
 
                 # 'INPUTS/Source/pt_x','INPUTS/Source/pt_y', - These variables are commendted out as they are not needed
                 for varName in ['pt','eta','e','sin_phi','cos_phi','btag', 'MASK'] :
+                    inputDict[f'INPUTS/Source/{varName}'].append(eventDict[f'INPUTS/Source/{varName}'])
+                for varName in ['sin_phi_R', 'cos_phi_R', 'mass'] :
                     inputDict[f'INPUTS/Source/{varName}'].append(eventDict[f'INPUTS/Source/{varName}'])
 
                 inputDict['AUX/aux/eventNumber'].append(eventDict['AUX/aux/eventNumber'])
@@ -488,6 +540,10 @@ def source(root_files : list, args: argparse.Namespace) -> None:
                 inputDict['INPUTS/Met/met'].append(eventDict['INPUTS/Met/met'])
                 inputDict['INPUTS/Met/sin_phi'].append(eventDict['INPUTS/Met/sin_phi'])
                 inputDict['INPUTS/Met/cos_phi'].append(eventDict['INPUTS/Met/cos_phi'])
+                
+                inputDict['INPUTS/Met/sin_phi_R'].append(eventDict['INPUTS/Met/sin_phi_R'])
+                inputDict['INPUTS/Met/cos_phi_R'].append(eventDict['INPUTS/Met/cos_phi_R'])
+
                 # inputDict['INPUTS/Met/met_x'].append(eventDict['INPUTS/Met/met_x'])
                 # inputDict['INPUTS/Met/met_y'].append(eventDict['INPUTS/Met/met_y'])
 
@@ -583,7 +639,7 @@ def saveToHDF5(outloc : str, featuresToSave : list, indices : np.array, inputDic
                 HDF5[featureName].resize( (HDF5[featureName].shape[0] + newData.shape[0]), axis = 0)
                 HDF5[featureName][-newData.shape[0]:] = newData
     else:
-        print(f'File {outloc} doesn\'t exist. Writing data to it.')
+        print(f'File {outloc} doesn\'t exist. Creating it and dumping data to it.')
         HDF5 = h5py.File(outloc, 'w')
         for featureName in featuresToSave:
             if featureName not in inputDict:
@@ -1068,7 +1124,7 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--inloc', default='/home/timoshyd/RAC_4tops_analysis/ntuples/v06_BDT_SPANET_Input/nom', type=str, help='Input file location.')
     parser.add_argument('-r', '--reconstruction', default='t1(b,q1,q2)|t2(b,q1,q2)|t3(b,q1,q2)|t4(b,q1,q2)', type=str, help='Topology of underlying event.')
     parser.add_argument('-t', '--topo', default='tttt', type=str, help='Topology of underlying event.')
-    parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/four_top_SPANET_input', type=str, help='Output location. File type of .h5 will be added automatically.')
+    parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/15JetsRot/four_top_SPANET_input', type=str, help='Output location. File type of .h5 will be added automatically.')
     parser.add_argument('-m', '--maxjets', default=15, type=int, help='Max number of jets.')
     parser.add_argument('-tr', '--treename', default='nominal', type=str, help='Name of nominal tree.')
     parser.add_argument('-b', '--btag', type=str, default='DL1r', help='Which btag alg to use.')
@@ -1079,6 +1135,7 @@ if __name__ == "__main__":
     parser.add_argument('-c','--cuts',default='allHad==1;jets>=8;bjets>=1;', choices=['_tttt',], help='Suffix to separate files.')
     parser.add_argument('--tag',default='_8JETS', help='Suffix to differentiate files.')
     parser.add_argument('--ignoreCuts', action='store_true', help='Ignore the cuts. Used to produced dataset for prediction.')
+    parser.add_argument('--ignoreDecayType', action='store_true', help='Ignore the decay type. Need this if ntuples do not have branch `truthTop_isLepDecay`. Then use `truth_allHad`')
     parser.add_argument('--saveSize', default=10000, type=int, help='Amount of events collected needed to save the progress.')
 
     args = parser.parse_args()
@@ -1120,7 +1177,7 @@ if __name__ == "__main__":
 
     MAX_JETS = args.maxjets
     if not MAX_JETS:
-        MAX_JETS = get_max_jets(file_paths, args.treename, args.topo)
+        MAX_JETS = getMaxJets(file_paths, args.treename, args.topo)
 
     # For now we choose only two files
     # rTagDict = {15 : ['r13167','r14859'], 16 : ['r13167','r14859'], 17 : ['r13144','r14860'], 18 : ['r13145','r14861']}
