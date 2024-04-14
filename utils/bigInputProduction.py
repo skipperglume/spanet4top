@@ -381,7 +381,7 @@ def source(root_files : list, args: argparse.Namespace) -> None:
             # mininterval=nSeconds
             for i in tqdm(eventRange, ):
                 # Early stopping for testing
-                if args.test and i - eventRange[0] > 200 : break
+                if args.test and i - eventRange[0] >= 2000 : break
                 #print(i)
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
@@ -568,7 +568,7 @@ def source(root_files : list, args: argparse.Namespace) -> None:
             partialWrite(featuresToSave, inputDict, cutFlowDict, args)
         plotHistograms( histoDict, args)
 
-def partialWrite( featuresToSave : list, inputDict : dict, cutflowDict : dict, args : argparse.Namespace, ) -> None: 
+def partialWrite( featuresToSave : list, inputDict : dict, cutFlowDict : dict, args : argparse.Namespace, ) -> None: 
     '''
     Method that partially saves the events to the HDF5 file. To not overload the memory we clear up the inputs.
     '''
@@ -600,16 +600,19 @@ def partialWrite( featuresToSave : list, inputDict : dict, cutflowDict : dict, a
         print(f'indices for {remainder} after division by {modulus}:', len(indices[0]))
         # Print out only elements that are in indices:
         print('eventNumber_list:',len(np.array(inputDict['AUX/aux/eventNumber'])[indices]))
-        # write( out, args.topo, featuresToSave, indices, inputDict, {} )
         saveToHDF5(out, featuresToSave, indices, inputDict)
-    # saveCutflow(cutFlowDict, args)
+    
+    # Saving the cutflow
+    saveCutflow(cutFlowDict, args)
 
+    # Clearing the inputDict and cutFlowDict to free up memory
     for varName in inputDict:
         inputDict[varName] = []
-    for varName in cutflowDict:
-        cutflowDict[varName] = []
+    for varName in cutFlowDict:
+        cutFlowDict[varName] = []
     
     print('~~~~~~Finish Saving~~~~~~')
+    print('\n')
     return
 
 def saveToHDF5(outloc : str, featuresToSave : list, indices : np.array, inputDict)->None:
@@ -619,6 +622,7 @@ def saveToHDF5(outloc : str, featuresToSave : list, indices : np.array, inputDic
     Otherwise appends all features from `featuresToSave` to it.
     '''
     print('  ++++++++++++++++++++++++++++++++++++++++++++')
+    # If path exists, append data to it
     if os.path.exists(outloc):
         print(f'File {outloc} exists. Appending data to it.')
         HDF5 = h5py.File(outloc, 'a')
@@ -638,6 +642,7 @@ def saveToHDF5(outloc : str, featuresToSave : list, indices : np.array, inputDic
             if newData is not None:
                 HDF5[featureName].resize( (HDF5[featureName].shape[0] + newData.shape[0]), axis = 0)
                 HDF5[featureName][-newData.shape[0]:] = newData
+    # Otherwise create it and dump data to it.
     else:
         print(f'File {outloc} doesn\'t exist. Creating it and dumping data to it.')
         HDF5 = h5py.File(outloc, 'w')
@@ -659,48 +664,26 @@ def saveToHDF5(outloc : str, featuresToSave : list, indices : np.array, inputDic
                 data = np.array(inputDict[featureName], dtype=np.float32)[indices]
                 HDF5.create_dataset(    featureName, data=data, 
                                         maxshape=(None,) + data.shape[1:],)
-    print(HDF5)
     HDF5.close()
     print('  ++++++++++++++++++++++++++++++++++++++++++++')
     return None
 
-# Function to save data to HDF5 file
-def write(outloc : str, topo : str, featuresToSave : list, indices : np.array, inputDict, decayDict : dict):
-    """
-        Function to create and write to the HDF5 file
-    """
-    # print('Indices Size: ',len(indices[0]))
-       
-    HDF5 = h5py.File(outloc, 'w')
-    for featureName in featuresToSave:
-        if featureName not in inputDict:
-            print(f'ERROR: {featureName} not found in inputDict')
-            exit(1)
-        if 'AUX/' in featureName:
-            continue
-        if 'MASK' in featureName:
-            HDF5.create_dataset(featureName, data=np.array(inputDict[featureName], dtype='bool')[indices])
-        elif 'TARGETS' in featureName:
-            HDF5.create_dataset(featureName, data=np.array(inputDict[featureName], dtype=np.int32)[indices])
-        else:
-            HDF5.create_dataset(featureName, data=np.array(inputDict[featureName], dtype=np.float32)[indices])
-
-    #INPUTS group
-    # inputsGroup = HDF5.create_group('INPUTS')
-    # sourceGroup = inputsGroup.create_group('Source')
-    # jet_mask_set = sourceGroup.create_dataset('MASK', data=np.array(jet_mask_list, dtype='bool')[indices])
-    # jet_mass_set = jet_group.create_dataset('mass', data=np.array(jet_mass_list, dtype=np.float32)[indices])
-
-    HDF5.close()
 
 def saveCutflow(cutFlow : dict, args : argparse.Namespace) -> None:
     '''
-    Save the cutflow in a pickle file.
+    Save the cutflow in a pickle file. 
     '''
     # Get Date and Time in format: dd-mm-yyyy
     dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
     if args.test : dateTimeVal += '_test'
-    pickleFileName = f'pickles/cutflow_{args.prefix}_{args.topo}_{dateTimeVal}.pkl'
+
+    pickleFileName = f'{os.path.dirname(args.outloc)}/pickles/cutflow_{args.prefix}_{args.topo}_{dateTimeVal}.pkl'
+    if os.path.exists(pickleFileName):
+        oldCutFlow = pickle.load(open(pickleFileName, 'rb'))
+        for varName in cutFlow:
+            oldCutFlow[varName] += cutFlow[varName]
+        cutFlow = oldCutFlow
+
     pickle.dump(cutFlow, open(pickleFileName, 'wb'))
     print(f'Cutflow saved in pickle format: {pickleFileName}')
      
@@ -711,13 +694,13 @@ def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
     # Get Date and Time in format: dd-mm-yyyy
     dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
     if args.test : dateTimeVal += '_test'
-    pickleFileName = f'pickles/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl'
+    pickleFileName = f'{os.path.dirname(args.outloc)}/pickles/histograms_{args.prefix}_{args.topo}_truth_{dateTimeVal}.pkl'
     pickle.dump(histoDict, open(pickleFileName, 'wb'))
     print(f'Histograms saved in pickle format: {pickleFileName}')
     for histo in histoDict:
         c = ROOT.TCanvas()
         histoDict[histo].Draw()
-        c.SaveAs(f'plots/{histo}.png')
+        c.SaveAs(f'{os.path.dirname(args.outloc)}/plots/{histo}_{args.prefix}_{args.topo}_truth_{dateTimeVal}.png')
 
 def targetsAreUnique(targets : list) -> bool:
     for target in targets: 
@@ -1124,7 +1107,7 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--inloc', default='/home/timoshyd/RAC_4tops_analysis/ntuples/v06_BDT_SPANET_Input/nom', type=str, help='Input file location.')
     parser.add_argument('-r', '--reconstruction', default='t1(b,q1,q2)|t2(b,q1,q2)|t3(b,q1,q2)|t4(b,q1,q2)', type=str, help='Topology of underlying event.')
     parser.add_argument('-t', '--topo', default='tttt', type=str, help='Topology of underlying event.')
-    parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/15JetsRot/four_top_SPANET_input', type=str, help='Output location. File type of .h5 will be added automatically.')
+    parser.add_argument('-o', '--outloc', default='/home/timoshyd/spanet4Top/ntuples/four_top_SPANET_input/test/four_top_SPANET_input', type=str, help='Output location. File type of .h5 will be added automatically.')
     parser.add_argument('-m', '--maxjets', default=15, type=int, help='Max number of jets.')
     parser.add_argument('-tr', '--treename', default='nominal', type=str, help='Name of nominal tree.')
     parser.add_argument('-b', '--btag', type=str, default='DL1r', help='Which btag alg to use.')
@@ -1136,10 +1119,21 @@ if __name__ == "__main__":
     parser.add_argument('--tag',default='_8JETS', help='Suffix to differentiate files.')
     parser.add_argument('--ignoreCuts', action='store_true', help='Ignore the cuts. Used to produced dataset for prediction.')
     parser.add_argument('--ignoreDecayType', action='store_true', help='Ignore the decay type. Need this if ntuples do not have branch `truthTop_isLepDecay`. Then use `truth_allHad`')
-    parser.add_argument('--saveSize', default=10000, type=int, help='Amount of events collected needed to save the progress.')
+    parser.add_argument('--saveSize', default=10, type=int, help='Amount of events collected needed to save the progress.')
 
     args = parser.parse_args()
     args.particlesGroupName = getParticlesGroupName(args.reconstruction)
+
+    if os.path.exists( os.path.dirname(args.outloc)):
+        print('Output directory exists.')
+        print('Cleaning up the directory.')
+        os.system(f'rm -rf {os.path.dirname(args.outloc)}/*')
+    else:
+        print('Output directory does not exist.')
+        print('Creating the directory.')
+        os.makedirs(os.path.dirname(args.outloc))
+    os.makedirs(os.path.dirname(args.outloc)+'/pickles')
+    os.makedirs(os.path.dirname(args.outloc)+'/plots')
 
     if args.prefix != '':
         listNameParts = args.outloc.split('/')
