@@ -216,6 +216,43 @@ def getJetMass(tree, defaultMass=0.1) -> list:
             # print(f'Negative mass: {jet.M()}. Set it to {defaultMass}')
     return result
 
+def fillHistograms(histoDict : dict, quality : dict, nominal : ROOT.TTree, args  : argparse.Namespace)->None:
+    '''
+    This method fills histograms with the quality of the assignment.
+    '''
+    print('histoDict:',histoDict.keys())
+    print('quality:',quality.keys())
+    # TODO: Continue
+    # dict_keys(['nAssigned', 'unique', 'nCompleteMatch', 't1_TruthMass', 't1_MatchMass', 't1_MatchedJetsMass', 't1_DeltaR', 't1_PtRatio', 't1_truthRecoDeltaR', 't1_truthRecoPtRatio', 't1_partonRecoDeltaR', 't1_partonRecoPtRatio', 't2_TruthMass', 't2_MatchMass', 't2_MatchedJetsMass', 't2_DeltaR', 't2_PtRatio', 't2_truthRecoDeltaR', 't2_truthRecoPtRatio', 't2_partonRecoDeltaR', 't2_partonRecoPtRatio', 't3_TruthMass', 't3_MatchMass', 't3_MatchedJetsMass', 't3_DeltaR', 't3_PtRatio', 't3_truthRecoDeltaR', 't3_truthRecoPtRatio', 't3_partonRecoDeltaR', 't3_partonRecoPtRatio', 't4_TruthMass', 't4_MatchMass', 't4_MatchedJetsMass', 't4_DeltaR', 't4_PtRatio', 't4_truthRecoDeltaR', 't4_truthRecoPtRatio', 't4_partonRecoDeltaR', 't4_partonRecoPtRatio', 'W1_TruthMass', 'W1_MatchMass', 'W1_MatchedJetsMass', 'W1_DeltaR', 'W1_PtRatio', 'W1_truthRecoDeltaR', 'W1_truthRecoPtRatio', 'W1_partonRecoDeltaR', 'W1_partonRecoPtRatio', 'W2_TruthMass', 'W2_MatchMass', 'W2_MatchedJetsMass', 'W2_DeltaR', 'W2_PtRatio', 'W2_truthRecoDeltaR', 'W2_truthRecoPtRatio', 'W2_partonRecoDeltaR', 'W2_partonRecoPtRatio', 'W3_TruthMass', 'W3_MatchMass', 'W3_MatchedJetsMass', 'W3_DeltaR', 'W3_PtRatio', 'W3_truthRecoDeltaR', 'W3_truthRecoPtRatio', 'W3_partonRecoDeltaR', 'W3_partonRecoPtRatio', 'W4_TruthMass', 'W4_MatchMass', 'W4_MatchedJetsMass', 'W4_DeltaR', 'W4_PtRatio', 'W4_truthRecoDeltaR', 'W4_truthRecoPtRatio', 'W4_partonRecoDeltaR', 'W4_partonRecoPtRatio'])
+
+    # dict_keys(['TruthMass', 'MatchedMass', 'MatchedJetsMass', 'W_TruthMass', 'W_MatchedMass', 'W_MatchedJetsMass', 'DeltaR', 'topTruthRecoDeltaR', 'partonRecoDeltaR', 'W_DeltaR', 'W_topTruthRecoDeltaR', 'W_partonRecoDeltaR', 'b_DeltaR', 'b_topTruthRecoDeltaR', 'b_partonRecoDeltaR', 'PtRatio', 'topTruthRecoPtRatio', 'partonRecoPtRatio', 'nAssigned', 'nCompleteMatch'])
+
+    histoDict['nAssigned'].Fill( quality.get('nAssigned', -1)  , 1)
+    histoDict['nCompleteMatch'].Fill( quality.get('nCompleteMatch', -1)  , 1)
+    for group in args.particlesGroupName:
+        histoDict['MatchedMass'].Fill( quality.get(f'{group}_MatchMass', -1)  , nominal.weight_final)
+        histoDict['TruthMass'].Fill( quality.get(f'{group}_TruthMass', -1)  , nominal.weight_final)
+        histoDict['DeltaR'].Fill( quality.get(f'{group}_DeltaR', -1)  , nominal.weight_final)
+        histoDict['PtRatio'].Fill( quality.get(f'{group}_PtRatio', -1)  , nominal.weight_final)
+        histoDict['MatchedJetsMass'].Fill( quality.get(f'{group}_MatchedJetsMass', -1)  , nominal.weight_final)
+        histoDict['topTruthRecoDeltaR'].Fill( quality.get(f'{group}_truthRecoDeltaR', -1)  , nominal.weight_final)
+        histoDict['topTruthRecoPtRatio'].Fill( quality.get(f'{group}_truthRecoPtRatio', -1) , nominal.weight_final)
+        histoDict['partonRecoDeltaR'].Fill( quality.get(f'{group}_partonRecoDeltaR', -1)  , nominal.weight_final)
+        histoDict['partonRecoPtRatio'].Fill( quality.get(f'{group}_partonRecoPtRatio', -1)  , nominal.weight_final)
+
+    for group in ['W1', 'W2', 'W3', 'W4']:
+        histoDict['MatchedMass'].Fill( quality.get(f'{group}_MatchMass', -1)  , nominal.weight_final)
+        histoDict['TruthMass'].Fill( quality.get(f'{group}_TruthMass', -1)  , nominal.weight_final)
+        histoDict['DeltaR'].Fill( quality.get(f'{group}_DeltaR', -1)  , nominal.weight_final)
+        histoDict['PtRatio'].Fill( quality.get(f'{group}_PtRatio', -1)  , nominal.weight_final)
+        histoDict['MatchedJetsMass'].Fill( quality.get(f'{group}_MatchedJetsMass', -1)  , nominal.weight_final)
+        histoDict['topTruthRecoDeltaR'].Fill( quality.get(f'{group}_truthRecoDeltaR', -1)  , nominal.weight_final)
+        histoDict['topTruthRecoPtRatio'].Fill( quality.get(f'{group}_truthRecoPtRatio', -1) , nominal.weight_final)
+        histoDict['partonRecoDeltaR'].Fill( quality.get(f'{group}_partonRecoDeltaR', -1)  , nominal.weight_final)
+        histoDict['partonRecoPtRatio'].Fill( quality.get(f'{group}_partonRecoPtRatio', -1)  , nominal.weight_final)
+
+    return 
+
 def source(root_files : list, args: argparse.Namespace) -> None:
         """
         Create HDF5 file and create the "source" group in the HDF5 file.
@@ -337,18 +374,34 @@ def source(root_files : list, args: argparse.Namespace) -> None:
        
         # Set histograms
         histoDict = {}
-        histoDict['MatchedMass'] =          ROOT.TH1F('MatchedMass;Mass [GeV];Event weight', 'MatchedMass;Mass [GeV];Event weight', 100, 0, 500)
-        histoDict['TruthMass'] =            ROOT.TH1F('TruthMass;Mass [GeV];Event weight', 'TruthMass;Mass [GeV];Event weight', 100, 0, 500)
-        histoDict['MatchedJetsMass'] =      ROOT.TH1F('MatchedJetsMass;Mass [GeV];Event weight', 'MatchedJetsMass;Mass [GeV];Event weight', 100, 0, 500)
-        
+        # Masses of top-quarks: parton level, parton level with matched and matched jets
+        histoDict['TruthMass'] =            ROOT.TH1F('Top Truth Mass;Mass [GeV];Event weight', 'Top Truth Mass;Top Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['MatchedMass'] =          ROOT.TH1F('Top Matched Mass;Mass [GeV];Event weight', 'Top Matched Mass;Top Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['MatchedJetsMass'] =      ROOT.TH1F('Top Matched Jets Mass;Mass [GeV];Event weight', 'Top Matched Jets Mass;Top Mass [GeV];Event weight', 100, 0, 500)
+        # Masses of top-quarks: parton level, parton level with matched and matched jets
+        histoDict['W_TruthMass'] =            ROOT.TH1F('W Truth Mass;Mass [GeV];Event weight', 'W Truth Mass;W Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['W_MatchedMass'] =          ROOT.TH1F('W Matched Mass;Mass [GeV];Event weight', 'W Matched Mass;W Mass [GeV];Event weight', 100, 0, 500)
+        histoDict['W_MatchedJetsMass'] =      ROOT.TH1F('W Matched Jets Mass;Mass [GeV];Event weight', 'W Matched Jets Mass;W Mass [GeV];Event weight', 100, 0, 500)
+        # Delta R for top-quarks built from partons and jets
         histoDict['DeltaR'] =               ROOT.TH1F('DeltaR;#Delta R;Event weight', 'DeltaR;#Delta R;Event weight', 100, -1, 4)
         histoDict['topTruthRecoDeltaR'] =   ROOT.TH1F('topTruthRecoDeltaR;#Delta R;Event weight', 'topTruthRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
         histoDict['partonRecoDeltaR'] =     ROOT.TH1F('partonRecoDeltaR;#Delta R;Event weight', 'partonRecoDeltaR;#Delta R;Event weight', 100, -1, 4)
+        
+        histoDict['W_DeltaR'] =               ROOT.TH1F('W DeltaR;W #Delta R;Event weight', 'DeltaR;W #Delta R;Event weight', 100, -1, 4)
+        histoDict['W_topTruthRecoDeltaR'] =   ROOT.TH1F('W topTruthRecoDeltaR;W #Delta R;Event weight', 'topTruthRecoDeltaR;W #Delta R;Event weight', 100, -1, 4)
+        histoDict['W_partonRecoDeltaR'] =     ROOT.TH1F('W partonRecoDeltaR;W #Delta R;Event weight', 'partonRecoDeltaR;W #Delta R;Event weight', 100, -1, 4)
+        
+        histoDict['b_DeltaR'] =               ROOT.TH1F('b DeltaR;b #Delta R;Event weight', 'DeltaR;b #Delta R;Event weight', 100, -1, 4)
+        histoDict['b_topTruthRecoDeltaR'] =   ROOT.TH1F('b topTruthRecoDeltaR;b #Delta R;Event weight', 'topTruthRecoDeltaR;b #Delta R;Event weight', 100, -1, 4)
+        histoDict['b_partonRecoDeltaR'] =     ROOT.TH1F('b partonRecoDeltaR;b #Delta R;Event weight', 'partonRecoDeltaR;b #Delta R;Event weight', 100, -1, 4)
         
         histoDict['PtRatio'] =              ROOT.TH1F('PtRatio;p_{T,1}/p_{T,2};Event weight', 'PtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
         histoDict['topTruthRecoPtRatio'] =  ROOT.TH1F('topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'topTruthRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
         histoDict['partonRecoPtRatio'] =    ROOT.TH1F('partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 'partonRecoPtRatio;p_{T,1}/p_{T,2};Event weight', 100, -1, 4)
 
+        histoDict['nAssigned'] =            ROOT.TH1F('Number of Partons with asssigned Jet;Number of assigned;Event weight', 'nAssigned;Number of assigned;Event weight', 14, -0.5, 13.5)
+        histoDict['nCompleteMatch'] =       ROOT.TH1F('Number of Particles fully asssigned;Number of Particles;Event weight', 'nComplete;Number of Particles;Event weight', 4, -0.5, 4.5)
+        
         for histo in histoDict:
             histoDict[histo].Sumw2()
 
@@ -381,15 +434,13 @@ def source(root_files : list, args: argparse.Namespace) -> None:
             # mininterval=nSeconds
             for i in tqdm(eventRange, ):
                 # Early stopping for testing
-                if args.test and i - eventRange[0] >= 2000 : break
-                #print(i)
+                if args.test and i - eventRange[0] >= 200 : break
                 if i % 50000 == 0: 
                     print(str(i)+"/"+str(eventNumber))
                     # print('Currently collected events: ',len(inputDict['AUX/aux/eventNumber']), '-', len(inputDict['AUX/aux/eventNumber'])/(i+1))
                 nominal.GetEntry(i)
                 # Now do the particle groups, ie the truth targets
                 # One could apply cuts here if desired, but usually inclusive training is best!
-                # print(assignmentDict)
                 
                 for varName in cutFlowVars:
                     cutFlowDict[varName].append(False)
@@ -414,24 +465,15 @@ def source(root_files : list, args: argparse.Namespace) -> None:
                     partonLVs = getPartonLVs(nominal, args)
                     jetLVs = getJetLVs(nominal, args)
                     quality = evaluateAssignmentQuality(nominal, partonLVs, jetLVs, assignmentDict, args)
+                    quality_W = evaluateAssignmentQuality_Wboson(nominal, partonLVs, jetLVs, assignmentDict, args)
+                    quality_b = {}
+                    # quarlity_b = evaluateAssignmentQuality_BQuark(nominal, partonLVs, jetLVs, assignmentDict, args)
                 else:
                     assignmentDict = emptyPartonJetPairs(nominal, args)
                     quality = {}
-
-                # Quality keys:
-                # 'nAssigned', 'unique', 'nCompleteMatch', 
-                # 't@_TruthMass', 't@_MatchMass', 't@_DeltaR', 't@_PtRatio'
+                    quality_W = {}
+                    quality_b = {}
                 
-                # if quality['nCompleteMatch'] != 4 : continue
-                
-                if not True:
-                    print('Old | New Assignments:')
-                    particleParton = args.particlesGroupName
-                    for group in particleParton:
-                        for parton in particleParton[group]:
-                            oldMatch = assignmentDict[group+'/'+parton] if group+'/'+parton in assignmentDict else 'N'
-                            newMatch = assignment[group+'/'+parton] if group+'/'+parton in assignment else 'N'
-                            print(group+'/'+parton+":", oldMatch, '|', newMatch)
                 
                 isGoodAssignment = goodAssignment(nominal, assignmentDict, args, cutFlowDict)
                 if not isGoodAssignment and not args.ignoreCuts: 
@@ -444,24 +486,26 @@ def source(root_files : list, args: argparse.Namespace) -> None:
                 if isGoodAssignment and isGoodEvent:
                     cutFlowDict['toUse'][-1] = True
                 
-                for group in args.particlesGroupName:
+                # print('Before Merge:',quality.keys())
 
-                    histoDict['MatchedMass'].Fill( quality.get(f'{group}_MatchMass', -1)  , nominal.weight_final)
-                    histoDict['TruthMass'].Fill( quality.get(f'{group}_TruthMass', -1)  , nominal.weight_final)
-                    histoDict['DeltaR'].Fill( quality.get(f'{group}_DeltaR', -1)  , nominal.weight_final)
-                    histoDict['PtRatio'].Fill( quality.get(f'{group}_PtRatio', -1)  , nominal.weight_final)
-                    histoDict['MatchedJetsMass'].Fill( quality.get(f'{group}_MatchedJetsMass', -1)  , nominal.weight_final)
-                    histoDict['topTruthRecoDeltaR'].Fill( quality.get(f'{group}_truthRecoDeltaR', -1)  , nominal.weight_final)
-                    histoDict['topTruthRecoPtRatio'].Fill( quality.get(f'{group}_truthRecoPtRatio', -1) , nominal.weight_final)
-                    histoDict['partonRecoDeltaR'].Fill( quality.get(f'{group}_partonRecoDeltaR', -1)  , nominal.weight_final)
-                    histoDict['partonRecoPtRatio'].Fill( quality.get(f'{group}_partonRecoPtRatio', -1)  , nominal.weight_final)
+                for valueKey in quality_W:
+                    if valueKey not in quality:
+                        quality[valueKey] = quality_W[valueKey]
+                        quality_W[valueKey] = None
+                    else:
+                        print(f'Dublication of Key: {valueKey} in quality and quality_W')
+                #for valueKey in quality_b:
+                    #if valueKey not in quality:
+                 #       quality[valueKey] = quality_b[valueKey]
+                
+                # print('After Merge:',quality.keys())
+                # Filling histograms
+                fillHistograms(histoDict, quality, nominal, args)
 
                 # TODO: check variable - truthTop_isHadTauDecay
                 isLepDecay = [ float(x.encode("utf-8").hex())  for x in list(nominal.truthTop_isLepDecay)]
-                if sum(isLepDecay) > 0:
-                    non_all_had_count += 1
-                else:
-                    all_had_count += 1
+                if sum(isLepDecay) > 0: non_all_had_count += 1
+                else: all_had_count += 1
 
                 # Feature lists for: pt, eat, phi, ls - that hold this info for ONLY CURRENT EVENT
                 eventDict = {}
@@ -560,7 +604,7 @@ def source(root_files : list, args: argparse.Namespace) -> None:
 
                 # If size of current events gets big enough, write\append to HDF5 file
                 # TODO: Need to check if indeed memory gets overloaded!
-                if len(inputDict['AUX/aux/eventNumber']) > args.saveSize:
+                if len(inputDict['AUX/aux/eventNumber']) >= args.saveSize:
                     partialWrite(featuresToSave, inputDict, cutFlowDict, args)
             # Close ROOT files
             f.Close()
@@ -690,6 +734,7 @@ def saveCutflow(cutFlow : dict, args : argparse.Namespace) -> None:
 def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
     '''
     Save the histograms as pickle dump file and also as png files.
+    'TruthMass', 'MatchedMass', 'MatchedJetsMass', 'W_TruthMass', 'W_MatchedMass', 'W_MatchedJetsMass', 'DeltaR', 'topTruthRecoDeltaR', 'partonRecoDeltaR', 'W_DeltaR', 'W_topTruthRecoDeltaR', 'W_partonRecoDeltaR', 'b_DeltaR', 'b_topTruthRecoDeltaR', 'b_partonRecoDeltaR', 'PtRatio', 'topTruthRecoPtRatio', 'partonRecoPtRatio'
     '''
     # Get Date and Time in format: dd-mm-yyyy
     dateTimeVal = datetime.datetime.now().strftime("%d-%m-%Y")
@@ -698,6 +743,9 @@ def plotHistograms( histoDict: dict, args : argparse.Namespace) -> None:
     pickle.dump(histoDict, open(pickleFileName, 'wb'))
     print(f'Histograms saved in pickle format: {pickleFileName}')
     for histo in histoDict:
+        if histoDict[histo].GetEntries() == 0:
+            print(f'No entries in {histo} histogram. Skipping.')
+            continue
         c = ROOT.TCanvas()
         histoDict[histo].Draw()
         c.SaveAs(f'{os.path.dirname(args.outloc)}/plots/{histo}_{args.prefix}_{args.topo}_truth_{dateTimeVal}.png')
@@ -915,10 +963,56 @@ def getLVofMatchedJets(jetLVs : dict, assignmentDict : dict, args : argparse.Nam
                 result[particle] += jetLVs[assignmentDict[partonName]]
     return result
 
+def evaluateAssignmentQuality_Wboson(nominal, partonLVs : dict, jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
+    '''
+    This method evaluates the quality of the assignment of partons to jets in a sense of W-bosons.
+    '''
+    wellness = {}
+    particlePartons = args.particlesGroupName
+    # Dictionary of Lontze Vectors for:
+    # - Target Particles (4W-boson)
+    
+    particleLVs = {} # truth LVs for W-bosons constructed with parton LVs 
+    particleMatchedLVs = {} # truth LVs for W-bosons constructed with parton LVs that have a matching jet
+    lvOfMatchedJets = {} # LVs of the matched jets to the partons of the W-bosons
+    for particle in ['W1','W2','W3','W4']:
+        particleLVs[particle] = ROOT.TLorentzVector()
+        particleMatchedLVs[particle] = ROOT.TLorentzVector()
+        lvOfMatchedJets[particle] = ROOT.TLorentzVector()
+        for parton in ['q1','q2']:
+            partonName = f't{particle[1]}/{parton}'
+            particleLVs[particle] += partonLVs[partonName]
+            if partonName in assignmentDict and assignmentDict[partonName] != -1:
+                particleMatchedLVs[particle] += partonLVs[partonName]
+                lvOfMatchedJets[particle] += jetLVs[assignmentDict[partonName]]
+        
+    #for particle in ['W1','W2','W3','W4']:
+        #print(particleLVs[particle].M()*0.001,  particleMatchedLVs[particle].M()*0.001, lvOfMatchedJets[particle].M()*0.001,)
+    
+    for particle in particleLVs:
+        wellness[f'{particle}_TruthMass'] = particleLVs[particle].M()*0.001
+        wellness[f'{particle}_MatchMass'] = particleMatchedLVs[particle].M()*0.001
+        wellness[f'{particle}_MatchedJetsMass'] = lvOfMatchedJets[particle].M()*0.001
+        
+        wellness[f'{particle}_DeltaR'] = particleLVs[particle].DeltaR(particleMatchedLVs[particle])
+        wellness[f'{particle}_PtRatio'] = particleMatchedLVs[particle].Pt()/particleLVs[particle].Pt()
+
+        wellness[f'{particle}_truthRecoDeltaR'] = particleLVs[particle].DeltaR(lvOfMatchedJets[particle])
+        wellness[f'{particle}_truthRecoPtRatio'] = lvOfMatchedJets[particle].Pt()/particleLVs[particle].Pt()
+
+        wellness[f'{particle}_partonRecoDeltaR'] = particleMatchedLVs[particle].DeltaR(lvOfMatchedJets[particle]) if particleMatchedLVs[particle].Pt() > 0 else -0.5
+        # particleMatchedLVs[particle].DeltaR(lvOfMatchedJets[particle]) if particle in lvOfMatchedJets else -1
+        wellness[f'{particle}_partonRecoPtRatio'] = lvOfMatchedJets[particle].Pt() / particleMatchedLVs[particle].Pt() if particleMatchedLVs[particle].Pt() > 0 else -0.5
+        # lvOfMatchedJets[particle].Pt()/particleMatchedLVs[particle].Pt() if particleMatchedLVs[particle].Pt() > 0 else -1
+
+        # wellness[f'{particle}_topTruthRecoDeltaR'] = lvOfMatchedJets[particle].M()*0.001 if particle in lvOfMatchedJets else -1
+
+    return wellness
+
 def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignmentDict : dict, args : argparse.Namespace) -> dict:
     '''
     This method evaluates the quality of the assignment of partons to jets.
-    Such metrics as masses, Delta R between the reconstructed and true particles.
+    Such metrics as top masses, Delta R between the reconstructed and true particles.
     '''
     wellness = {}
     # Number of jets that were matched to partons
@@ -970,19 +1064,7 @@ def evaluateAssignmentQuality(nominal, partonLVs : dict, jetLVs : dict, assignme
         # lvOfMatchedJets[particle].Pt()/particleMatchedLVs[particle].Pt() if particleMatchedLVs[particle].Pt() > 0 else -1
 
         # wellness[f'{particle}_topTruthRecoDeltaR'] = lvOfMatchedJets[particle].M()*0.001 if particle in lvOfMatchedJets else -1
-    
 
-    # for particle in particlePartons:
-    #     print(particle, ':', end='')
-    #     print( getParticleMatchedLVs( partonLVs, assignmentDict, args)[particle].M()*0.001, ' / ', end=''  )
-    #     print( particleLVs[particle].M()*0.001, ' / ', end=''  )
-    #     print( lvOfMatchedJets[particle].M()*0.001, ' / ', end=''  )
-    #     if particle in particleMatchedLVs:
-    #         print( particle, ':', particleMatchedLVs[particle].M()*0.001, ' / ', end=''   )
-    #         if getParticleMatchedLVs( partonLVs, assignmentDict, args)[particle].M()*0.001 != particleMatchedLVs[particle].M()*0.001:
-    #             print('!+!+!+!+')
-
-    #     print()
     return wellness
 def emptyPartonJetPairs(nominal, args) -> dict: 
     '''
@@ -1099,6 +1181,38 @@ def assignIndicesljetsttbar( nominal, args : argparse.Namespace) -> dict:
     
     return result
 
+def prepareDirectories(args: argparse.Namespace) -> None:
+    '''
+    This method prepares the directories for the output files.
+    As well as the name of the SPANet format h5 file.
+    '''
+
+    # Preparing Output directories
+    outDir = os.path.dirname(args.outloc)
+    if os.path.exists( outDir):
+        print('Output directory exists.')
+        print('Cleaning up the directory.')
+        os.system(f'rm -rf {outDir}/*')
+    else:
+        print('Output directory does not exist.')
+        print('Creating the directory.')
+        os.makedirs(outDir)
+    os.makedirs(f'{outDir}/pickles')
+    os.makedirs(f'{outDir}/plots')
+
+    # Preparing the name of the output file
+    fileName = os.path.basename(args.outloc)
+    if args.prefix != '':
+        print('Old output location:', args.outloc)
+        args.outloc = f'{outDir}/{args.prefix}{fileName}{args.suffix}{args.tag}'
+        print('New output location:', args.outloc)
+
+    # Remove the output files if they exist
+    for appendix in ['_part_even.h5', '_part_odd.h5', '_part.h5']:
+        if os.path.isfile(args.outloc+appendix):
+            print(f'HDF file {args.outloc+appendix} is removed.')
+            os.system(f'rm {args.outloc+appendix}')
+
 if __name__ == "__main__":
        
     file_paths = []
@@ -1119,55 +1233,25 @@ if __name__ == "__main__":
     parser.add_argument('--tag',default='_8JETS', help='Suffix to differentiate files.')
     parser.add_argument('--ignoreCuts', action='store_true', help='Ignore the cuts. Used to produced dataset for prediction.')
     parser.add_argument('--ignoreDecayType', action='store_true', help='Ignore the decay type. Need this if ntuples do not have branch `truthTop_isLepDecay`. Then use `truth_allHad`')
-    parser.add_argument('--saveSize', default=10, type=int, help='Amount of events collected needed to save the progress.')
+    parser.add_argument('--saveSize', default=18, type=int, help='Amount of events collected needed to save the progress.')
 
     args = parser.parse_args()
     args.particlesGroupName = getParticlesGroupName(args.reconstruction)
 
-    if os.path.exists( os.path.dirname(args.outloc)):
-        print('Output directory exists.')
-        print('Cleaning up the directory.')
-        os.system(f'rm -rf {os.path.dirname(args.outloc)}/*')
-    else:
-        print('Output directory does not exist.')
-        print('Creating the directory.')
-        os.makedirs(os.path.dirname(args.outloc))
-    os.makedirs(os.path.dirname(args.outloc)+'/pickles')
-    os.makedirs(os.path.dirname(args.outloc)+'/plots')
+    prepareDirectories(args)
 
-    if args.prefix != '':
-        listNameParts = args.outloc.split('/')
-        listNameParts[-1] = args.prefix + listNameParts[-1]
-        print('Old output location:', args.outloc)
-        args.outloc = '/'.join(listNameParts)
-        print('New output location:', args.outloc)
-    if args.suffix != '' or args.tag != '':
-        listNameParts = args.outloc.split('/')
-        listNameParts[-1] = listNameParts[-1] + args.suffix + args.tag
-        print('Old output location:', args.outloc)
-        args.outloc = '/'.join(listNameParts)
-        print('New output location:', args.outloc)
-    # exit(1)
-    #print(args.inloc)
     if os.path.isfile(args.inloc):
         file_paths.append(args.inloc)
     elif os.path.isdir(args.inloc):
         for filename in  glob.iglob(args.inloc+"**/**.root", recursive=True):
-            #print(filename)
             if os.path.isfile(filename):
                 file_paths.append(filename)
     displayFoundFiles(file_paths)
-    # print(file_paths)
+    
     """
     file_paths is a list of paths to the ATLAS ROOT files.
     source() function builds the HDF5 file.
     """
-    # Remove the output files if they exist
-    for appendix in ['_part_even.h5', '_part_odd.h5', '_part.h5']:
-        if os.path.isfile(args.outloc+appendix):
-            print(f'HDF file {args.outloc+appendix} is removed.')
-            os.system(f'rm {args.outloc+appendix}')
-    
 
     MAX_JETS = args.maxjets
     if not MAX_JETS:
