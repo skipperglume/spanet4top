@@ -30,7 +30,7 @@
     "skip_connections": true,
     "initial_embedding_skip_connections": true,
     "event_info_file": "./event_files/all_had_4top.yaml",
-    "training_file": "./data/all_had_4top/four_top_SPANET_input_even.h5",
+    "training_file": "./data/all_had_4top/spanet_tttt_odd.h5",
     "testing_file": "",
 
     "normalize_features": true,

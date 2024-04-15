@@ -110,6 +110,10 @@ def main(
     # Begin the training loop
     # -------------------------------------------------------------------------------------------------------
 
+    # Setting precision:
+    # TODO: check this line
+    torch.set_float32_matmul_precision('medium')
+
     # Create the initial model on the CPU
     model = JetReconstructionModel(options, torch_script)
 
