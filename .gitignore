@@ -245,3 +245,13 @@ ipython_config.py
 *_logs/
 *_output/
 environment/
+
+# Spanet Training and Test Files:
+data/*/*.h5
+
+# Pickle and log files in utils:
+utils/*.pkl
+utils/*.txt
+
+# Personalized script files
+data/*/*.sh
