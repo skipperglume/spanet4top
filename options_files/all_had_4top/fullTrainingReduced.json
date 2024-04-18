@@ -30,7 +30,7 @@
     "skip_connections": true,
     "initial_embedding_skip_connections": true,
     "event_info_file": "./event_files/all_had_4top/all_had_4top_reduced.yaml",
-    "training_file": "./data/all_had_4top/four_top_SPANET_input_even.h5",
+    "training_file": "./data/all_had_4top/spanet_tttt_even.h5",
     "testing_file": "",
 
     "normalize_features": true,
@@ -42,7 +42,7 @@
 
     "dataset_limit": 1.0,
     "train_validation_split": 0.95,
-    "batch_size": 2048,
+    "batch_size": 4096,
     "num_dataloader_workers": 8,
 
     "mask_sequence_vectors": true,

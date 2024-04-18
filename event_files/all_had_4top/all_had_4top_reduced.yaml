@@ -9,18 +9,19 @@ INPUTS:
     Source:
       btag: none
       cos_phi: normalize
-      e: log_normalize
-      eta: normalize
-      # pt: log_normalize
       sin_phi: normalize
+      # e: log_normalize
+      eta: normalize
+      pt: log_normalize
+      mass: log_normalize
 
   # ---------------------------------------------------------------------
   # REQUIRED - GLOBAL - inputs which will have a single vector per event.
   # ---------------------------------------------------------------------
   GLOBAL:
     Met:
-      cos_phi: normalize
       met: log_normalize
+      cos_phi: normalize
       sin_phi: normalize
 
 
